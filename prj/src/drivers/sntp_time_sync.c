@@ -168,6 +168,39 @@ int sntp_time_get_hour(void)
 	return -1;
 }
 
+float sntp_time_get_local_hour_f(void)
+{
+	if (!time_synced) {
+		return -1.0f;
+	}
+
+	struct timespec ts;
+	if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+		return -1.0f;
+	}
+
+	/* 转为本地秒（UTC+8） */
+	int64_t local_sec = (int64_t)ts.tv_sec + TIMEZONE_OFFSET_SECONDS;
+
+	/* 取当天秒数 */
+	int64_t sod = local_sec % 86400;
+	if (sod < 0) {
+		sod += 86400;
+	}
+
+	double sec_f = (double)sod + (double)ts.tv_nsec / 1e9;
+	double hour = sec_f / 3600.0;
+
+	/* 规范到 [0,24) */
+	if (hour < 0.0) {
+		hour += 24.0;
+	} else if (hour >= 24.0) {
+		hour -= 24.0;
+	}
+
+	return (float)hour;
+}
+
 /* ================================================================
  * 更新RTC (WF-010)
  * ================================================================ */

@@ -82,6 +82,12 @@ int sntp_time_get_local(local_time_t *local);
 int sntp_time_get_hour(void);
 
 /**
+ * @brief 获取当前本地小时数（带小数部分）
+ * @return 小时数 [0,24)，负值=未同步或失败
+ */
+float sntp_time_get_local_hour_f(void);
+
+/**
  * @brief 更新系统RTC (WF-010)
  * @return 0=成功, 负值=失败
  */

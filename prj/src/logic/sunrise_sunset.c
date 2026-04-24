@@ -182,14 +182,11 @@ float sun_get_sunset_proximity(void)
 		return 0.0f;
 	}
 
-	/* 获取当前小时 */
-	int current_hour = sntp_time_get_hour();
-	if (current_hour < 0) {
+	/* 获取当前本地小时（带小数），避免整点跳变 */
+	float current = sntp_time_get_local_hour_f();
+	if (current < 0.0f) {
 		return 0.0f;
 	}
-
-	float current = (float)current_hour +
-			(float)(k_uptime_get() % 3600000) / 3600000.0f;
 	float sunset = sun_cache.sunset_hour;
 
 	/* 计算距离日落的时间差 */

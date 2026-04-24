@@ -17,6 +17,35 @@
 
 LOG_MODULE_REGISTER(weather, CONFIG_LOG_DEFAULT_LEVEL);
 
+static inline char ascii_tolower(char c)
+{
+	return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+}
+
+static bool contains_case_insensitive_ascii(const char *haystack, const char *needle)
+{
+	if (!haystack || !needle || needle[0] == '\0') {
+		return false;
+	}
+
+	size_t nlen = strlen(needle);
+	if (nlen == 0) {
+		return false;
+	}
+
+	for (const char *h = haystack; *h; h++) {
+		size_t i = 0;
+		while (i < nlen && h[i] &&
+		       ascii_tolower(h[i]) == ascii_tolower(needle[i])) {
+			i++;
+		}
+		if (i == nlen) {
+			return true;
+		}
+	}
+	return false;
+}
+
 /* ================================================================
  * 内部状态
  * ================================================================ */
@@ -162,7 +191,7 @@ float weather_encode(const char *description)
 
 	/* 模糊匹配: 按关键词表顺序匹配 */
 	for (int i = 0; i < ARRAY_SIZE(weather_keywords); i++) {
-		if (strcasestr(description, weather_keywords[i].keyword)) {
+		if (contains_case_insensitive_ascii(description, weather_keywords[i].keyword)) {
 			return weather_keywords[i].code;
 		}
 	}

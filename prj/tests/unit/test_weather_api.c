@@ -16,6 +16,8 @@ ZTEST(weather_api, test_encode_sunny)
 		"Sunny should encode to 0.0");
 	zassert_equal(WEATHER_CODE_SUNNY, weather_encode("Clear"),
 		"Clear should encode to 0.0");
+	zassert_equal(WEATHER_CODE_SUNNY, weather_encode("sUnNy"),
+		"Case-insensitive sunny should encode to 0.0");
 }
 
 ZTEST(weather_api, test_encode_cloudy)
@@ -34,6 +36,8 @@ ZTEST(weather_api, test_encode_overcast)
 		"Fog should encode to 0.75");
 	zassert_equal(WEATHER_CODE_OVERCAST, weather_encode("Mist"),
 		"Mist should encode to 0.75");
+	zassert_equal(WEATHER_CODE_OVERCAST, weather_encode("mIsT"),
+		"Case-insensitive mist should encode to 0.75");
 }
 
 ZTEST(weather_api, test_encode_rain_snow)

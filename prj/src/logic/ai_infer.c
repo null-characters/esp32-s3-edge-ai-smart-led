@@ -335,16 +335,13 @@ void ai_infer_thread_fn(void)
 	ai_thread_running = true;
 
 	while (ai_thread_running) {
-		/* 获取当前时间 */
-		int hour_int = sntp_time_get_hour();
-		if (hour_int < 0) {
+		/* 获取当前本地小时（带小数），避免整点跳变 */
+		float hour = sntp_time_get_local_hour_f();
+		if (hour < 0.0f) {
 			/* 时间未同步,跳过 */
 			k_sleep(K_SECONDS(5));
 			continue;
 		}
-
-		float hour = (float)hour_int +
-			     (float)(k_uptime_get() % 3600000) / 3600000.0f;
 
 		/* 获取天气数据 */
 		float weather = weather_get_code();
