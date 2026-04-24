@@ -15,4 +15,9 @@ target_sources(app PRIVATE
 	src/main.c
 	src/drivers/pir.c
 	src/drivers/uart_driver.c
+	src/drivers/lighting.c
+	src/logic/presence_state.c
+	src/logic/time_period.c
+	src/logic/rule_engine.c
+	src/logic/fade_control.c
 )

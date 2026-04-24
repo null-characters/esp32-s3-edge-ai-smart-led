@@ -9,6 +9,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
+#include <string.h>
 
 #include "uart_driver.h"
 
@@ -130,4 +131,164 @@ int uart_send_frame(const uint8_t *frame, uint8_t len)
 
 	LOG_DBG("UART sent %d bytes", len);
 	return 0;
+}
+
+/* ================================================================
+ * 帧解析 (HW-011)
+ * ================================================================ */
+int frame_parse(const uint8_t *buf, uint8_t buf_len,
+		uint8_t *cmd, uint8_t *data, uint8_t *data_len)
+{
+	if (!buf || !cmd || !data || !data_len) {
+		return -EINVAL;
+	}
+
+	/* 检查最小长度 */
+	if (buf_len < FRAME_OVERHEAD) {
+		LOG_WRN("Frame too short: %d bytes (min %d)", buf_len, FRAME_OVERHEAD);
+		return FRAME_PARSE_ERR_LENGTH;
+	}
+
+	/* 验证帧头 0xAA55 */
+	if (buf[0] != FRAME_HEADER_HI || buf[1] != FRAME_HEADER_LO) {
+		LOG_WRN("Invalid frame header: 0x%02X%02X (expected 0xAA55)",
+			buf[0], buf[1]);
+		return FRAME_PARSE_ERR_HEADER;
+	}
+
+	/* 提取命令字和数据长度 */
+	uint8_t received_cmd = buf[2];
+	uint8_t received_len = buf[3];
+
+	/* 验证总长度 */
+	if (FRAME_OVERHEAD + received_len != buf_len) {
+		LOG_WRN("Length mismatch: total=%d, claimed len=%d",
+			buf_len, received_len);
+		return FRAME_PARSE_ERR_LENGTH;
+	}
+
+	/* 验证帧尾 0x0D0A */
+	if (buf[buf_len - 2] != FRAME_FOOTER_HI ||
+	    buf[buf_len - 1] != FRAME_FOOTER_LO) {
+		LOG_WRN("Invalid frame footer: 0x%02X%02X (expected 0x0D0A)",
+			buf[buf_len - 2], buf[buf_len - 1]);
+		return FRAME_PARSE_ERR_FOOTER;
+	}
+
+	/* 计算并验证校验和 */
+	uint8_t calc_sum = calc_checksum(&buf[FRAME_HEADER_LEN],
+					 1 + 1 + received_len);
+	uint8_t recv_sum = buf[FRAME_HEADER_LEN + 1 + 1 + received_len];
+
+	if (calc_sum != recv_sum) {
+		LOG_WRN("Checksum error: calc=0x%02X, recv=0x%02X",
+			calc_sum, recv_sum);
+		return FRAME_PARSE_ERR_CSUM;
+	}
+
+	/* 提取数据 */
+	*cmd = received_cmd;
+	*data_len = received_len;
+	for (uint8_t i = 0; i < received_len; i++) {
+		data[i] = buf[FRAME_HEADER_LEN + 1 + 1 + i];
+	}
+
+	LOG_DBG("Frame parsed: cmd=0x%02X len=%d csum=0x%02X",
+		received_cmd, received_len, recv_sum);
+	return FRAME_PARSE_OK;
+}
+
+/* ================================================================
+ * 接收响应 (HW-014)
+ * ================================================================ */
+int uart_receive_response(uint8_t *cmd, uint8_t *data, uint8_t *data_len)
+{
+	static uint8_t rx_buf[FRAME_MAX_TOTAL];
+	uint8_t idx = 0;
+	int64_t timeout = k_uptime_get() + UART_RECV_TIMEOUT_MS;
+
+	/* 清除缓冲区 */
+	memset(rx_buf, 0, sizeof(rx_buf));
+
+	/* 轮询接收直到超时或收到完整帧 */
+	while (k_uptime_get() < timeout) {
+		uint8_t byte;
+		if (uart_poll_in(uart_dev, &byte) == 0) {
+			if (idx < sizeof(rx_buf)) {
+				rx_buf[idx++] = byte;
+
+				/* 尝试解析 (可能帧还不完整,会返回错误) */
+				if (idx >= FRAME_OVERHEAD) {
+					int ret = frame_parse(rx_buf, idx, cmd, data, data_len);
+					if (ret == FRAME_PARSE_OK) {
+						/* 成功接收并解析 */
+						LOG_DBG("Response received: cmd=0x%02X len=%d",
+							*cmd, *data_len);
+						return 0;
+					}
+				}
+			}
+		}
+	}
+
+	LOG_WRN("Response timeout after %d ms", UART_RECV_TIMEOUT_MS);
+	return -ETIMEDOUT;
+}
+
+/* ================================================================
+ * 发送命令并等待响应 (HW-015)
+ * ================================================================ */
+int uart_send_with_retry(uint8_t cmd, const uint8_t *data, uint8_t data_len)
+{
+	static uint8_t tx_buf[FRAME_MAX_TOTAL];
+	static uint8_t rx_data[256];
+	uint8_t rx_cmd, rx_len;
+	int ret;
+
+	/* 构建发送帧 */
+	int frame_len = frame_build(cmd, data, data_len, tx_buf);
+	if (frame_len < 0) {
+		LOG_ERR("Frame build failed: %d", frame_len);
+		return frame_len;
+	}
+
+	/* 重试循环 */
+	for (int retry = 0; retry <= UART_MAX_RETRIES; retry++) {
+		if (retry > 0) {
+			LOG_WRN("Retry %d/%d for cmd=0x%02X", retry, UART_MAX_RETRIES, cmd);
+			k_sleep(K_MSEC(UART_RETRY_DELAY_MS));
+		}
+
+		/* 发送 */
+		ret = uart_send_frame(tx_buf, frame_len);
+		if (ret < 0) {
+			LOG_ERR("UART send failed: %d", ret);
+			continue;
+		}
+
+		/* 等待响应 */
+		ret = uart_receive_response(&rx_cmd, rx_data, &rx_len);
+		if (ret < 0) {
+			LOG_WRN("No response received (retry %d)", retry);
+			continue;
+		}
+
+		/* 检查响应内容 */
+		if (rx_len >= 1) {
+			if (rx_data[0] == 0x00) {
+				LOG_INF("Command 0x%02X acknowledged (ACK)", cmd);
+				return 0;
+			} else if (rx_data[0] == 0xFF) {
+				LOG_WRN("Command 0x%02X rejected (NAK)", cmd);
+				return -ENOTSUP;
+			}
+		}
+
+		/* 收到响应但无法识别 */
+		LOG_WRN("Unexpected response to cmd 0x%02X", cmd);
+		return -EBADMSG;
+	}
+
+	LOG_ERR("Command 0x%02X failed after %d retries", cmd, UART_MAX_RETRIES);
+	return -EIO;
 }
