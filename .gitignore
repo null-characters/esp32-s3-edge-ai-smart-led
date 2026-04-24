@@ -1,0 +1,57 @@
+# Zephyr 项目 .gitignore
+
+# 构建输出
+build/
+build_hello/
+build_*/
+twister-out*/
+.cproject
+.project
+.settings/
+*.pyc
+__pycache__/
+
+# Zephyr SDK 和工具链
+zephyr-sdk-*/
+espressif_tools/
+tools/
+
+# Zephyr 源码和模块 (作为依赖，不提交)
+zephyr/
+modules/
+bootloader/
+
+# 环境相关
+.env
+.venv/
+venv/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+
+# 临时文件
+*.tmp
+*.log
+*.bak
+
+# 环境搭建文档 (非项目本身)
+环境搭建完成报告.md
+setup_env.py
+
+# west配置 (本地环境相关)
+.west/
+
+# 大文件和二进制文件
+*.bin
+*.elf
+*.hex
+*.map
+*.uf2
