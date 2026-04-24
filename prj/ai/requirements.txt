@@ -1,0 +1,5 @@
+# ESP32-S3 会议室智能照明 - AI训练依赖
+# Phase 3: AI-001
+tensorflow>=2.12.0
+numpy>=1.24.0
+pandas>=2.0.0
