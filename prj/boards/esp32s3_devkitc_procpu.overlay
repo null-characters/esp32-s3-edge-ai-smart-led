@@ -1,0 +1,70 @@
+/*
+ * ESP32-S3 DevKitC Board Overlay (N16R8)
+ * Edge AI Gateway Project
+ * 
+ * Hardware Configuration:
+ * - Flash: 16MB (修正N8→N16)
+ * - PSRAM: 8MB Octal SPI
+ * - GPIO4: PIR传感器输入 (内部上拉)
+ * - UART1: 驱动板通信 (TX=GPIO17, RX=GPIO18, 115200bps 8N1)
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/* ================================================================
+ * Flash 修正: N16R8模块使用16MB Flash (默认DTS是8MB)
+ * ================================================================ */
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;  /* 16MB */
+};
+
+/* ================================================================
+ * PSRAM 启用: 8MB Octal SPI
+ * psram0使用'size'属性而非'reg'(其父节点dcache0持有reg)
+ * ================================================================ */
+&psram0 {
+	size = <DT_SIZE_M(8)>;  /* 8MB */
+};
+
+/* ================================================================
+ * GPIO & 外设别名
+ * ================================================================ */
+/ {
+	aliases {
+		pir-sensor = &pir_gpio;
+		sensor-uart = &uart1;
+	};
+
+	/* PIR传感器 GPIO4: 输入模式, 内部上拉 */
+	pir_gpio: pir-sensor {
+		compatible = "gpio-keys";
+		pir_input: pir_input {
+			label = "PIR Sensor";
+			gpios = <&gpio0 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+};
+
+/* ================================================================
+ * UART1: 驱动板通信 (GPIO17=TX, GPIO18=RX, 115200bps)
+ * pinctrl在板级esp32s3_devkitc-pinctrl.dtsi中已定义
+ * ================================================================ */
+&uart1 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-names = "default";
+};
+
+/* ================================================================
+ * GPIO控制器启用
+ * ================================================================ */
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
