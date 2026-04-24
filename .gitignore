@@ -42,6 +42,9 @@ Thumbs.db
 *.log
 *.bak
 
+# CodeBuddy AI 助手工作目录
+.codebuddy/
+
 # 环境搭建文档 (非项目本身)
 环境搭建完成报告.md
 setup_env.py
