@@ -293,7 +293,33 @@ void wifi_manager_thread_fn(void)
 	}
 }
 
-/* WiFi管理线程定义 */
-K_THREAD_DEFINE(wifi_mgr_thread, 4096,
-		wifi_manager_thread_fn, NULL, NULL, NULL,
-		7, 0, 0);
+/* 线程控制（显式启动） */
+static K_THREAD_STACK_DEFINE(wifi_mgr_stack, 4096);
+static struct k_thread wifi_mgr_thread;
+static k_tid_t wifi_mgr_tid;
+
+int wifi_manager_start(void)
+{
+	if (wifi_mgr_tid) {
+		return 0;
+	}
+
+	wifi_mgr_tid = k_thread_create(&wifi_mgr_thread, wifi_mgr_stack,
+				       K_THREAD_STACK_SIZEOF(wifi_mgr_stack),
+				       (k_thread_entry_t)wifi_manager_thread_fn,
+				       NULL, NULL, NULL,
+				       7, 0, K_FOREVER);
+	k_thread_name_set(wifi_mgr_tid, "wifi_mgr");
+	k_thread_start(wifi_mgr_tid);
+	return 0;
+}
+
+int wifi_manager_stop(void)
+{
+	if (!wifi_mgr_tid) {
+		return 0;
+	}
+	k_thread_abort(wifi_mgr_tid);
+	wifi_mgr_tid = NULL;
+	return 0;
+}

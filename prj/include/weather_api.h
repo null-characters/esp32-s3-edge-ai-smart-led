@@ -94,4 +94,16 @@ bool weather_cache_is_valid(void);
  */
 void weather_update_thread_fn(void);
 
+/**
+ * @brief 启动天气更新线程（显式启动）
+ * @return 0=成功
+ */
+int weather_api_start(void);
+
+/**
+ * @brief 停止天气更新线程
+ * @return 0=成功
+ */
+int weather_api_stop(void);
+
 #endif /* WEATHER_API_H */

@@ -39,15 +39,9 @@ int lighting_set_color_temp(uint16_t color_temp)
 		(color_temp >> 8) & 0xFF
 	};
 
-	int len = frame_build(CMD_SET_COLOR_TEMP, data, sizeof(data), tx_buf);
-	if (len < 0) {
-		LOG_ERR("Frame build failed: %d", len);
-		return len;
-	}
-
-	int ret = uart_send_frame(tx_buf, len);
+	int ret = uart_send_with_retry(CMD_SET_COLOR_TEMP, data, sizeof(data));
 	if (ret < 0) {
-		LOG_ERR("UART send failed: %d", ret);
+		LOG_ERR("UART send_with_retry failed: %d", ret);
 		return ret;
 	}
 
@@ -68,15 +62,9 @@ int lighting_set_brightness(uint8_t brightness)
 
 	uint8_t data[1] = { brightness };
 
-	int len = frame_build(CMD_SET_BRIGHTNESS, data, sizeof(data), tx_buf);
-	if (len < 0) {
-		LOG_ERR("Frame build failed: %d", len);
-		return len;
-	}
-
-	int ret = uart_send_frame(tx_buf, len);
+	int ret = uart_send_with_retry(CMD_SET_BRIGHTNESS, data, sizeof(data));
 	if (ret < 0) {
-		LOG_ERR("UART send failed: %d", ret);
+		LOG_ERR("UART send_with_retry failed: %d", ret);
 		return ret;
 	}
 
@@ -105,15 +93,9 @@ int lighting_set_both(uint16_t color_temp, uint8_t brightness)
 		brightness
 	};
 
-	int len = frame_build(CMD_SET_BOTH, data, sizeof(data), tx_buf);
-	if (len < 0) {
-		LOG_ERR("Frame build failed: %d", len);
-		return len;
-	}
-
-	int ret = uart_send_frame(tx_buf, len);
+	int ret = uart_send_with_retry(CMD_SET_BOTH, data, sizeof(data));
 	if (ret < 0) {
-		LOG_ERR("UART send failed: %d", ret);
+		LOG_ERR("UART send_with_retry failed: %d", ret);
 		return ret;
 	}
 
@@ -126,15 +108,9 @@ int lighting_set_both(uint16_t color_temp, uint8_t brightness)
  * ================================================================ */
 int lighting_get_status(void)
 {
-	int len = frame_build(CMD_GET_STATUS, NULL, 0, tx_buf);
-	if (len < 0) {
-		LOG_ERR("Frame build failed: %d", len);
-		return len;
-	}
-
-	int ret = uart_send_frame(tx_buf, len);
+	int ret = uart_send_with_retry(CMD_GET_STATUS, NULL, 0);
 	if (ret < 0) {
-		LOG_ERR("UART send failed: %d", ret);
+		LOG_ERR("UART send_with_retry failed: %d", ret);
 		return ret;
 	}
 

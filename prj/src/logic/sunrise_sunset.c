@@ -162,8 +162,7 @@ float sun_iso_to_hour(const char *iso_time)
 		return -1.0f;
 	}
 
-	/* 检查时区偏移 */
-	/* API返回UTC时间,需要转换为本地时间 (UTC+8) */
+	/* API返回UTC时间，这里转换为本地小时(UTC+8)一次性偏移，避免在多处重复加偏移 */
 	hour += 8;
 	if (hour >= 24) {
 		hour -= 24;
@@ -280,7 +279,33 @@ void sun_update_thread_fn(void)
 	}
 }
 
-/* 日出日落更新线程定义 */
-K_THREAD_DEFINE(sun_thread, 4096,
-		sun_update_thread_fn, NULL, NULL, NULL,
-		8, 0, 0);
+/* 线程控制（显式启动） */
+static K_THREAD_STACK_DEFINE(sun_stack, 4096);
+static struct k_thread sun_thread;
+static k_tid_t sun_tid;
+
+int sun_api_start(void)
+{
+	if (sun_tid) {
+		return 0;
+	}
+
+	sun_tid = k_thread_create(&sun_thread, sun_stack,
+				  K_THREAD_STACK_SIZEOF(sun_stack),
+				  (k_thread_entry_t)sun_update_thread_fn,
+				  NULL, NULL, NULL,
+				  8, 0, K_FOREVER);
+	k_thread_name_set(sun_tid, "sun_update");
+	k_thread_start(sun_tid);
+	return 0;
+}
+
+int sun_api_stop(void)
+{
+	if (!sun_tid) {
+		return 0;
+	}
+	k_thread_abort(sun_tid);
+	sun_tid = NULL;
+	return 0;
+}

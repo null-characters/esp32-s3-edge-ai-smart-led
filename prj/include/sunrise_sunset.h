@@ -91,4 +91,16 @@ bool sun_cache_is_valid(void);
  */
 void sun_update_thread_fn(void);
 
+/**
+ * @brief 启动日出日落更新线程（显式启动）
+ * @return 0=成功
+ */
+int sun_api_start(void);
+
+/**
+ * @brief 停止日出日落更新线程
+ * @return 0=成功
+ */
+int sun_api_stop(void);
+
 #endif /* SUNRISE_SUNSET_H */

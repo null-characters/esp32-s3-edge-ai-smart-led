@@ -30,14 +30,9 @@ int sntp_time_init(void)
 
 	/* Zephyr SNTP通过socket API工作,无需额外初始化
 	 * NTP服务器在prj.conf中通过CONFIG_SNTP配置
-	 * 时区通过环境变量或代码设置
+	 * 时区转换由本模块统一处理(UTC -> UTC+8)
 	 */
-
-	/* 设置时区为UTC+8 */
-	setenv("TZ", "CST-8", 1);
-	tzset();
-
-	LOG_INF("SNTP client initialized (timezone: UTC+8)");
+	LOG_INF("SNTP client initialized (timezone offset: +8h)");
 	return 0;
 }
 
@@ -187,6 +182,7 @@ int sntp_time_update_rtc(void)
 
 /* ================================================================
  * SNTP周期同步线程
+ * - 注意: 不再使用 K_THREAD_DEFINE 自动启动，避免“名义未启动但实际在跑”
  * ================================================================ */
 void sntp_time_thread_fn(void)
 {
@@ -210,7 +206,33 @@ void sntp_time_thread_fn(void)
 	}
 }
 
-/* SNTP同步线程定义 */
-K_THREAD_DEFINE(sntp_sync_thread, 2048,
-		sntp_time_thread_fn, NULL, NULL, NULL,
-		8, 0, 0);
+/* 线程控制（显式启动） */
+static K_THREAD_STACK_DEFINE(sntp_sync_stack, 2048);
+static struct k_thread sntp_sync_thread;
+static k_tid_t sntp_sync_tid;
+
+int sntp_time_start(void)
+{
+	if (sntp_sync_tid) {
+		return 0;
+	}
+
+	sntp_sync_tid = k_thread_create(&sntp_sync_thread, sntp_sync_stack,
+					K_THREAD_STACK_SIZEOF(sntp_sync_stack),
+					(k_thread_entry_t)sntp_time_thread_fn,
+					NULL, NULL, NULL,
+					8, 0, K_FOREVER);
+	k_thread_name_set(sntp_sync_tid, "sntp_sync");
+	k_thread_start(sntp_sync_tid);
+	return 0;
+}
+
+int sntp_time_stop(void)
+{
+	if (!sntp_sync_tid) {
+		return 0;
+	}
+	k_thread_abort(sntp_sync_tid);
+	sntp_sync_tid = NULL;
+	return 0;
+}

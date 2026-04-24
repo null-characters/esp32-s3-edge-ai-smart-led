@@ -248,7 +248,33 @@ void weather_update_thread_fn(void)
 	}
 }
 
-/* 天气更新线程定义 */
-K_THREAD_DEFINE(weather_thread, 4096,
-		weather_update_thread_fn, NULL, NULL, NULL,
-		8, 0, 0);
+/* 线程控制（显式启动） */
+static K_THREAD_STACK_DEFINE(weather_stack, 4096);
+static struct k_thread weather_thread;
+static k_tid_t weather_tid;
+
+int weather_api_start(void)
+{
+	if (weather_tid) {
+		return 0;
+	}
+
+	weather_tid = k_thread_create(&weather_thread, weather_stack,
+				      K_THREAD_STACK_SIZEOF(weather_stack),
+				      (k_thread_entry_t)weather_update_thread_fn,
+				      NULL, NULL, NULL,
+				      8, 0, K_FOREVER);
+	k_thread_name_set(weather_tid, "weather_update");
+	k_thread_start(weather_tid);
+	return 0;
+}
+
+int weather_api_stop(void)
+{
+	if (!weather_tid) {
+		return 0;
+	}
+	k_thread_abort(weather_tid);
+	weather_tid = NULL;
+	return 0;
+}

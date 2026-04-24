@@ -92,4 +92,16 @@ int sntp_time_update_rtc(void);
  */
 void sntp_time_thread_fn(void);
 
+/**
+ * @brief 启动SNTP周期同步线程（显式启动）
+ * @return 0=成功
+ */
+int sntp_time_start(void);
+
+/**
+ * @brief 停止SNTP周期同步线程
+ * @return 0=成功
+ */
+int sntp_time_stop(void);
+
 #endif /* SNTP_TIME_SYNC_H */

@@ -90,4 +90,16 @@ void wifi_manager_register_state_cb(wifi_state_cb_t cb);
  */
 void wifi_manager_thread_fn(void);
 
+/**
+ * @brief 启动WiFi管理线程（显式启动）
+ * @return 0=成功
+ */
+int wifi_manager_start(void);
+
+/**
+ * @brief 停止WiFi管理线程
+ * @return 0=成功
+ */
+int wifi_manager_stop(void);
+
 #endif /* WIFI_MANAGER_H */

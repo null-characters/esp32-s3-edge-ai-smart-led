@@ -94,18 +94,30 @@ int main(void)
 	ret = wifi_manager_init();
 	if (ret < 0) { LOG_ERR("WiFi manager init failed"); }
 	wifi_manager_register_state_cb(wifi_state_callback);
+	if (ret == 0) {
+		wifi_manager_start();
+	}
 
 	ret = sntp_time_init();
 	if (ret < 0) { LOG_ERR("SNTP init failed"); }
+	if (ret == 0) {
+		sntp_time_start();
+	}
 
 	ret = http_client_init();
 	if (ret < 0) { LOG_ERR("HTTP client init failed"); }
 
 	ret = weather_api_init();
 	if (ret < 0) { LOG_ERR("Weather API init failed"); }
+	if (ret == 0) {
+		weather_api_start();
+	}
 
 	ret = sun_api_init();
 	if (ret < 0) { LOG_ERR("Sunrise-sunset API init failed"); }
+	if (ret == 0) {
+		sun_api_start();
+	}
 
 	ret = env_dimming_init();
 	if (ret < 0) { LOG_ERR("Environment dimming init failed"); }

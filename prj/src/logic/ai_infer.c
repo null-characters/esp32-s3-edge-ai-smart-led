@@ -48,6 +48,21 @@ bool ai_initialized = false;
 uint32_t last_inference_us = 0;
 }
 
+static inline int8_t clamp_int8(int32_t v)
+{
+	if (v > 127) return 127;
+	if (v < -128) return -128;
+	return (int8_t)v;
+}
+
+static inline float sanitize_float(float v)
+{
+	if (isnan(v) || isinf(v)) {
+		return 0.0f;
+	}
+	return v;
+}
+
 /* ================================================================
  * AI-008 ~ AI-010: 初始化
  * ================================================================ */
@@ -126,30 +141,35 @@ ai_status_t ai_infer_run(const ai_features_t *features, ai_output_t *output)
 		float input_scale = input_tensor->params.scale;
 		int input_zero_point = input_tensor->params.zero_point;
 
+		if (!(input_scale > 0.0f)) {
+			LOG_ERR("Invalid input scale: %f", (double)input_scale);
+			return AI_STATUS_ERROR_TENSOR;
+		}
+
 		float input_values[AI_FEATURE_COUNT] = {
-			features->hour_sin,
-			features->hour_cos,
-			features->sunset_proximity,
-			features->sunrise_hour_norm,
-			features->sunset_hour_norm,
-			features->weather,
-			features->presence
+			sanitize_float(features->hour_sin),
+			sanitize_float(features->hour_cos),
+			sanitize_float(features->sunset_proximity),
+			sanitize_float(features->sunrise_hour_norm),
+			sanitize_float(features->sunset_hour_norm),
+			sanitize_float(features->weather),
+			sanitize_float(features->presence)
 		};
 
 		for (int i = 0; i < AI_FEATURE_COUNT; i++) {
-			int8_t quantized = (int8_t)(input_values[i] / input_scale
-						     + input_zero_point);
-			input_tensor->data.int8[i] = quantized;
+			float q = input_values[i] / input_scale + (float)input_zero_point;
+			int32_t qi = (int32_t)lrintf(q);
+			input_tensor->data.int8[i] = clamp_int8(qi);
 		}
 	} else {
 		/* Float32输入 */
-		input_tensor->data.f[0] = features->hour_sin;
-		input_tensor->data.f[1] = features->hour_cos;
-		input_tensor->data.f[2] = features->sunset_proximity;
-		input_tensor->data.f[3] = features->sunrise_hour_norm;
-		input_tensor->data.f[4] = features->sunset_hour_norm;
-		input_tensor->data.f[5] = features->weather;
-		input_tensor->data.f[6] = features->presence;
+		input_tensor->data.f[0] = sanitize_float(features->hour_sin);
+		input_tensor->data.f[1] = sanitize_float(features->hour_cos);
+		input_tensor->data.f[2] = sanitize_float(features->sunset_proximity);
+		input_tensor->data.f[3] = sanitize_float(features->sunrise_hour_norm);
+		input_tensor->data.f[4] = sanitize_float(features->sunset_hour_norm);
+		input_tensor->data.f[5] = sanitize_float(features->weather);
+		input_tensor->data.f[6] = sanitize_float(features->presence);
 	}
 
 	/* 执行推理并计时 */
@@ -170,6 +190,11 @@ ai_status_t ai_infer_run(const ai_features_t *features, ai_output_t *output)
 	if (output_tensor->type == kTfLiteInt8) {
 		float output_scale = output_tensor->params.scale;
 		int output_zero_point = output_tensor->params.zero_point;
+
+		if (!(output_scale > 0.0f)) {
+			LOG_ERR("Invalid output scale: %f", (double)output_scale);
+			return AI_STATUS_ERROR_TENSOR;
+		}
 
 		color_temp = (output_tensor->data.int8[0] - output_zero_point)
 			     * output_scale;
@@ -383,17 +408,31 @@ void ai_infer_thread_fn(void)
 	}
 }
 
-/* 推理线程定义 */
-K_THREAD_DEFINE(ai_thread, 8192,
-		ai_infer_thread_fn, NULL, NULL, NULL,
-		5, 0, 0);
+/* 线程控制（显式启动） */
+static K_THREAD_STACK_DEFINE(ai_stack, 8192);
+static struct k_thread ai_thread;
+static k_tid_t ai_tid;
 
 void ai_infer_thread_start(void)
 {
+	if (ai_tid) {
+		return;
+	}
 	ai_thread_running = true;
+	ai_tid = k_thread_create(&ai_thread, ai_stack,
+				 K_THREAD_STACK_SIZEOF(ai_stack),
+				 (k_thread_entry_t)ai_infer_thread_fn,
+				 NULL, NULL, NULL,
+				 5, 0, K_FOREVER);
+	k_thread_name_set(ai_tid, "ai_infer");
+	k_thread_start(ai_tid);
 }
 
 void ai_infer_thread_stop(void)
 {
 	ai_thread_running = false;
+	if (ai_tid) {
+		k_thread_abort(ai_tid);
+		ai_tid = NULL;
+	}
 }
