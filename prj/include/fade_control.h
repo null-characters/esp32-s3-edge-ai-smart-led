@@ -7,6 +7,7 @@
 #define FADE_CONTROL_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "lighting.h"
 
 /* 默认渐变时间 */
