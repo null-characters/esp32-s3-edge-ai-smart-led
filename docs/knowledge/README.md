@@ -11,6 +11,7 @@
 | [edge-ai-architecture-deep-dive.md](edge-ai-architecture-deep-dive.md) | 边缘 AI 系统架构深度解析：从训练到推理 |
 | [edge-ai-brainstorming-summary.md](edge-ai-brainstorming-summary.md) | 边缘 AI 架构脑暴纪要：从理论博弈到项目落地 |
 | [mlp-model-training-guide.md](mlp-model-training-guide.md) | MLP 模型训练指南：环境配置、数据生成、训练量化与导出 |
+| [mlp-model-testing-guide.md](mlp-model-testing-guide.md) | MLP 模型测试验证指南：测试策略、框架和验收标准 |
 
 ---
 
@@ -39,6 +40,7 @@ knowledge/
 ├── edge-ai-architecture-deep-dive.md      # 边缘 AI 架构理论
 ├── edge-ai-brainstorming-summary.md       # 边缘 AI 架构脑暴纪要
 ├── mlp-model-training-guide.md            # MLP 模型训练指南
+├── mlp-model-testing-guide.md            # MLP 模型测试验证指南
 └── (待扩展...)                             # 更多知识文档
 ```
 
