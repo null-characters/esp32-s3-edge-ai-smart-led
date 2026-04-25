@@ -28,6 +28,14 @@ venv/
 *.swp
 *.swo
 *~
+
+# AI 训练产物 (可重新生成)
+prj/ai/training_data.csv
+prj/ai/training_data.npz
+prj/ai/lighting_model.h5
+prj/ai/lighting_model_float.tflite
+prj/ai/lighting_model_int8.tflite
+prj/ai/normalization_params.txt
 .DS_Store
 Thumbs.db
 
