@@ -14,6 +14,7 @@
 #include "weather_api.h"
 #include "sunrise_sunset.h"
 #include "ai_infer.h"
+#include "presence_state.h"
 
 LOG_MODULE_REGISTER(data_log, CONFIG_LOG_DEFAULT_LEVEL);
 

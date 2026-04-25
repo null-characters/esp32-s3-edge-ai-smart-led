@@ -38,12 +38,12 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 static void wifi_state_callback(wifi_state_t state)
 {
 	switch (state) {
-	case WIFI_STATE_GOT_IP:
+	case WM_WIFI_STATE_GOT_IP:
 		LOG_INF("WiFi connected, starting data services...");
 		/* 记录事件 */
 		data_logger_log_lighting(EVENT_WEATHER_UPDATE, 0, 0, 0);
 		break;
-	case WIFI_STATE_DISCONNECTED:
+	case WM_WIFI_STATE_DISCONNECTED:
 		LOG_WRN("WiFi disconnected, using offline mode");
 		break;
 	default:

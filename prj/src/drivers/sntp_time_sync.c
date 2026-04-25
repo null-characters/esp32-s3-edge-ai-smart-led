@@ -6,9 +6,9 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/net/sntp.h>
-#include <zephyr/posix/time.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include <time.h>
 
 #include "sntp_time_sync.h"
 #include "time_period.h"
@@ -20,6 +20,7 @@ LOG_MODULE_REGISTER(sntp_sync, CONFIG_LOG_DEFAULT_LEVEL);
  * ================================================================ */
 static bool time_synced = false;
 static int64_t sync_timestamp = 0;   /* 上次同步的Unix时间戳 */
+static int64_t sync_uptime = 0;     /* 同步时的 uptime (ms) */
 
 /* ================================================================
  * SNTP初始化 (WF-006, WF-007)
@@ -57,18 +58,9 @@ int sntp_time_sync(void)
 
 		ret = sntp_simple(servers[i], timeout_ms, &sntp_time);
 		if (ret == 0) {
-			sync_timestamp = sntp_time.seconds;
+			sync_timestamp = (int64_t)sntp_time.seconds;
+			sync_uptime = k_uptime_get();
 			time_synced = true;
-
-			/* 更新系统时钟 */
-			struct timespec ts = {
-				.tv_sec = sntp_time.seconds,
-				.tv_nsec = sntp_time.microseconds * 1000,
-			};
-			clock_settime(CLOCK_REALTIME, &ts);
-
-			/* 更新RTC */
-			sntp_time_update_rtc();
 
 			/* 更新时段判断模块的小时数 */
 			local_time_t local;
@@ -104,10 +96,9 @@ int64_t sntp_time_get_timestamp(void)
 		return 0;
 	}
 
-	/* 从系统时钟获取当前时间 */
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	return (int64_t)ts.tv_sec;
+	/* 计算当前时间 = 同步时间 + 经过的毫秒数 */
+	int64_t elapsed_ms = k_uptime_get() - sync_uptime;
+	return sync_timestamp + (elapsed_ms / 1000);
 }
 
 /* ================================================================
@@ -174,31 +165,31 @@ float sntp_time_get_local_hour_f(void)
 		return -1.0f;
 	}
 
-	struct timespec ts;
-	if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-		return -1.0f;
-	}
-
-	/* 转为本地秒（UTC+8） */
-	int64_t local_sec = (int64_t)ts.tv_sec + TIMEZONE_OFFSET_SECONDS;
-
+	/* 计算当前秒数（含小数） */
+	int64_t elapsed_ms = k_uptime_get() - sync_uptime;
+	int64_t current_ts = sync_timestamp + (elapsed_ms / 1000);
+	
+	/* 加上时区偏移 */
+	int64_t local_sec = current_ts + TIMEZONE_OFFSET_SECONDS;
+	
 	/* 取当天秒数 */
 	int64_t sod = local_sec % 86400;
 	if (sod < 0) {
 		sod += 86400;
 	}
 
-	double sec_f = (double)sod + (double)ts.tv_nsec / 1e9;
-	double hour = sec_f / 3600.0;
+	/* 加上毫秒部分 */
+	float sec_f = (float)sod + (float)(elapsed_ms % 1000) / 1000.0f;
+	float hour = sec_f / 3600.0f;
 
 	/* 规范到 [0,24) */
-	if (hour < 0.0) {
-		hour += 24.0;
-	} else if (hour >= 24.0) {
-		hour -= 24.0;
+	if (hour < 0.0f) {
+		hour += 24.0f;
+	} else if (hour >= 24.0f) {
+		hour -= 24.0f;
 	}
 
-	return (float)hour;
+	return hour;
 }
 
 /* ================================================================
@@ -206,7 +197,7 @@ float sntp_time_get_local_hour_f(void)
  * ================================================================ */
 int sntp_time_update_rtc(void)
 {
-	/* Zephyr中clock_settime已经更新了系统RTC
+	/* Zephyr中我们使用软件时钟
 	 * 对于ESP32-S3, 硬件RTC由Zephyr底层驱动管理
 	 */
 	LOG_INF("RTC updated from SNTP");
@@ -215,7 +206,6 @@ int sntp_time_update_rtc(void)
 
 /* ================================================================
  * SNTP周期同步线程
- * - 注意: 不再使用 K_THREAD_DEFINE 自动启动，避免“名义未启动但实际在跑”
  * ================================================================ */
 void sntp_time_thread_fn(void)
 {

@@ -9,7 +9,6 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
-#include <zephyr/net/net_conn_mgr.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
@@ -20,7 +19,7 @@ LOG_MODULE_REGISTER(wifi_mgr, CONFIG_LOG_DEFAULT_LEVEL);
 /* ================================================================
  * 内部状态
  * ================================================================ */
-static wifi_state_t current_state = WIFI_STATE_DISCONNECTED;
+static wifi_state_t current_state = WM_WIFI_STATE_DISCONNECTED;
 static wifi_state_cb_t state_cb = NULL;
 
 /* 保存连接凭证 (用于自动重连) */
@@ -61,12 +60,12 @@ static void set_state(wifi_state_t new_state)
  * 网络管理事件回调 (WF-003, WF-004)
  * ================================================================ */
 static void net_mgmt_event_handler(struct net_mgmt_event_callback *cb,
-				    uint32_t mgmt_event, struct net_if *iface)
+				    uint64_t mgmt_event, struct net_if *iface)
 {
 	switch (mgmt_event) {
 	case NET_EVENT_WIFI_CONNECT_RESULT:
 		LOG_INF("WiFi connected event");
-		set_state(WIFI_STATE_CONNECTED);
+		set_state(WM_WIFI_STATE_CONNECTED);
 		k_sem_give(&wifi_connected);
 		reconnect_attempts = 0;
 		reconnect_delay_ms = WIFI_RECONNECT_MIN_DELAY_MS;
@@ -74,20 +73,20 @@ static void net_mgmt_event_handler(struct net_mgmt_event_callback *cb,
 
 	case NET_EVENT_WIFI_DISCONNECT_RESULT:
 		LOG_INF("WiFi disconnected event");
-		set_state(WIFI_STATE_DISCONNECTED);
+		set_state(WM_WIFI_STATE_DISCONNECTED);
 		reconnect_enabled = true;
 		break;
 
 	case NET_EVENT_IPV4_ADDR_ADD:
 		LOG_INF("IPv4 address added");
-		set_state(WIFI_STATE_GOT_IP);
+		set_state(WM_WIFI_STATE_GOT_IP);
 		k_sem_give(&wifi_got_ip);
 		break;
 
 	case NET_EVENT_IPV4_ADDR_DEL:
 		LOG_WRN("IPv4 address removed");
-		if (current_state == WIFI_STATE_GOT_IP) {
-			set_state(WIFI_STATE_CONNECTED);
+		if (current_state == WM_WIFI_STATE_GOT_IP) {
+			set_state(WM_WIFI_STATE_CONNECTED);
 		}
 		break;
 
@@ -118,7 +117,7 @@ int wifi_manager_init(void)
 				     NET_EVENT_IPV4_ADDR_DEL);
 	net_mgmt_add_event_callback(&mgmt_cb);
 
-	set_state(WIFI_STATE_DISCONNECTED);
+	set_state(WM_WIFI_STATE_DISCONNECTED);
 	LOG_INF("WiFi manager initialized");
 	return 0;
 }
@@ -150,13 +149,13 @@ int wifi_manager_connect(const char *ssid, const char *psk)
 		.band = WIFI_FREQ_BAND_2_4_GHZ,
 	};
 
-	set_state(WIFI_STATE_CONNECTING);
+	set_state(WM_WIFI_STATE_CONNECTING);
 
 	int ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, wifi_iface,
 			   &params, sizeof(params));
 	if (ret) {
 		LOG_ERR("WiFi connect request failed: %d", ret);
-		set_state(WIFI_STATE_ERROR);
+		set_state(WM_WIFI_STATE_ERROR);
 		return ret;
 	}
 
@@ -166,7 +165,7 @@ int wifi_manager_connect(const char *ssid, const char *psk)
 	ret = k_sem_take(&wifi_connected, K_SECONDS(30));
 	if (ret) {
 		LOG_ERR("WiFi connect timeout");
-		set_state(WIFI_STATE_ERROR);
+		set_state(WM_WIFI_STATE_ERROR);
 		return -ETIMEDOUT;
 	}
 
@@ -209,7 +208,7 @@ wifi_state_t wifi_manager_get_state(void)
 
 bool wifi_manager_is_connected(void)
 {
-	return current_state == WIFI_STATE_GOT_IP;
+	return current_state == WM_WIFI_STATE_GOT_IP;
 }
 
 int wifi_manager_get_ip(char *buf, size_t len)
@@ -222,10 +221,18 @@ int wifi_manager_get_ip(char *buf, size_t len)
 		return -ENODEV;
 	}
 
-	/* 遍历接口的IPv4地址 */
-	NET_IF_FOR_EACH_ADDR(wifi_iface, addr) {
-		if (addr->family == AF_INET && addr->is_used) {
-			net_addr_ntop(AF_INET, &addr->ipaddr, buf, len);
+	/* 获取接口的IPv4地址 */
+	struct net_if_addr *ifaddr = net_if_ipv4_get_global_addr(wifi_iface, NET_ADDR_PREFERRED);
+	if (ifaddr) {
+		net_addr_ntop(AF_INET, &ifaddr->address.in_addr, buf, len);
+		return 0;
+	}
+
+	/* 尝试获取链接本地地址 */
+	ARRAY_FOR_EACH(wifi_iface->config.ip.ipv4->unicast, i) {
+		struct net_if_addr *addr = &wifi_iface->config.ip.ipv4->unicast[i];
+		if (addr->is_used && addr->address.family == AF_INET) {
+			net_addr_ntop(AF_INET, &addr->address.in_addr, buf, len);
 			return 0;
 		}
 	}
@@ -267,7 +274,7 @@ void wifi_manager_thread_fn(void)
 	while (1) {
 		/* 检查是否需要重连 */
 		if (reconnect_enabled && has_credentials &&
-		    current_state == WIFI_STATE_DISCONNECTED) {
+		    current_state == WM_WIFI_STATE_DISCONNECTED) {
 
 			reconnect_attempts++;
 			LOG_INF("Reconnect attempt %d (delay %dms)",

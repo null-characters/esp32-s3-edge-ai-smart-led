@@ -1,8 +1,9 @@
 /*
- * AI Inference Engine Implementation - TFLM推理
+ * AI Inference Engine Implementation - TFLM推理 (Stub Version)
  * Phase 3: AI-008 ~ AI-012, AI-014 ~ AI-020
  *
  * 功能: TFLM初始化、特征计算、推理执行、后处理、推理线程
+ * 注意: 此为桩实现，完整版需要集成 TensorFlow Lite Micro
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -11,12 +12,6 @@
 
 #include "ai_infer.h"
 #include "model_data.h"
-
-/* TFLM头文件 */
-#include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
-#include "tensorflow/lite/micro/micro_error_reporter.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 /* Phase 2模块 */
 #include "sntp_time_sync.h"
@@ -30,30 +25,10 @@
 LOG_MODULE_REGISTER(ai_infer, CONFIG_LOG_DEFAULT_LEVEL);
 
 /* ================================================================
- * TFLM内部状态 (AI-008 ~ AI-012)
+ * 内部状态
  * ================================================================ */
-namespace {
-/* 张量工作区: 必须在内部SRAM (AI-027: 目标<8KB) */
-constexpr int kTensorArenaSize = 8192;
-uint8_t tensor_arena[kTensorArenaSize];
-
-tflite::MicroErrorReporter error_reporter;
-tflite::AllOpsResolver resolver;
-const tflite::Model *model = nullptr;
-tflite::MicroInterpreter *interpreter = nullptr;
-TfLiteTensor *input_tensor = nullptr;
-TfLiteTensor *output_tensor = nullptr;
-
-bool ai_initialized = false;
-uint32_t last_inference_us = 0;
-}
-
-static inline int8_t clamp_int8(int32_t v)
-{
-	if (v > 127) return 127;
-	if (v < -128) return -128;
-	return (int8_t)v;
-}
+static bool ai_initialized = false;
+static uint32_t last_inference_us = 0;
 
 static inline float sanitize_float(float v)
 {
@@ -64,56 +39,18 @@ static inline float sanitize_float(float v)
 }
 
 /* ================================================================
- * AI-008 ~ AI-010: 初始化
+ * AI-008 ~ AI-010: 初始化 (Stub)
  * ================================================================ */
 ai_status_t ai_infer_init(void)
 {
-	LOG_INF("Initializing AI inference engine...");
-
-	/* 加载模型 */
-	model = tflite::GetModel(g_lighting_model_data);
-	if (model->version() != TFLITE_SCHEMA_VERSION) {
-		LOG_ERR("Model version mismatch: %d vs %d",
-			model->version(), TFLITE_SCHEMA_VERSION);
-		return AI_STATUS_ERROR_MODEL;
-	}
+	LOG_INF("Initializing AI inference engine (stub mode)...");
 
 	if (g_lighting_model_data_len == 0) {
-		LOG_ERR("Model data is empty - run train_model.py first!");
-		return AI_STATUS_ERROR_MODEL;
+		LOG_WRN("Model data is empty - using rule-based fallback");
 	}
-
-	/* 创建解释器 (AI-009) */
-	static tflite::MicroInterpreter static_interpreter(
-		model, resolver, tensor_arena, kTensorArenaSize,
-		&error_reporter);
-	interpreter = &static_interpreter;
-
-	/* 分配张量 (AI-011) */
-	TfLiteStatus status = interpreter->AllocateTensors();
-	if (status != kTfLiteOk) {
-		LOG_ERR("AllocateTensors failed: %d", status);
-		return AI_STATUS_ERROR_TENSOR;
-	}
-
-	/* 获取输入输出张量指针 (AI-011) */
-	input_tensor = interpreter->input(0);
-	output_tensor = interpreter->output(0);
-
-	if (!input_tensor || !output_tensor) {
-		LOG_ERR("Failed to get input/output tensors");
-		return AI_STATUS_ERROR_TENSOR;
-	}
-
-	/* 打印模型信息 */
-	LOG_INF("Model loaded: input=%d bytes (%d dims), output=%d bytes (%d dims)",
-		input_tensor->bytes, input_tensor->dims->size,
-		output_tensor->bytes, output_tensor->dims->size);
-	LOG_INF("Tensor arena used: %d / %d bytes",
-		interpreter->arena_used_bytes(), kTensorArenaSize);
 
 	ai_initialized = true;
-	LOG_INF("AI inference engine ready!");
+	LOG_INF("AI inference engine ready (stub mode)");
 	return AI_STATUS_OK;
 }
 
@@ -123,11 +60,11 @@ bool ai_infer_is_ready(void)
 }
 
 /* ================================================================
- * AI-012, AI-017: 推理执行
+ * AI-012, AI-017: 推理执行 (Stub - 使用规则引擎)
  * ================================================================ */
 ai_status_t ai_infer_run(const ai_features_t *features, ai_output_t *output)
 {
-	if (!ai_initialized || !interpreter) {
+	if (!ai_initialized) {
 		return AI_STATUS_ERROR_INIT;
 	}
 
@@ -135,87 +72,52 @@ ai_status_t ai_infer_run(const ai_features_t *features, ai_output_t *output)
 		return AI_STATUS_ERROR_INPUT;
 	}
 
-	/* 填充输入张量 */
-	if (input_tensor->type == kTfLiteInt8) {
-		/* INT8量化输入 */
-		float input_scale = input_tensor->params.scale;
-		int input_zero_point = input_tensor->params.zero_point;
-
-		if (!(input_scale > 0.0f)) {
-			LOG_ERR("Invalid input scale: %f", (double)input_scale);
-			return AI_STATUS_ERROR_TENSOR;
-		}
-
-		float input_values[AI_FEATURE_COUNT] = {
-			sanitize_float(features->hour_sin),
-			sanitize_float(features->hour_cos),
-			sanitize_float(features->sunset_proximity),
-			sanitize_float(features->sunrise_hour_norm),
-			sanitize_float(features->sunset_hour_norm),
-			sanitize_float(features->weather),
-			sanitize_float(features->presence)
-		};
-
-		for (int i = 0; i < AI_FEATURE_COUNT; i++) {
-			float q = input_values[i] / input_scale + (float)input_zero_point;
-			int32_t qi = (int32_t)lrintf(q);
-			input_tensor->data.int8[i] = clamp_int8(qi);
-		}
-	} else {
-		/* Float32输入 */
-		input_tensor->data.f[0] = sanitize_float(features->hour_sin);
-		input_tensor->data.f[1] = sanitize_float(features->hour_cos);
-		input_tensor->data.f[2] = sanitize_float(features->sunset_proximity);
-		input_tensor->data.f[3] = sanitize_float(features->sunrise_hour_norm);
-		input_tensor->data.f[4] = sanitize_float(features->sunset_hour_norm);
-		input_tensor->data.f[5] = sanitize_float(features->weather);
-		input_tensor->data.f[6] = sanitize_float(features->presence);
+	/* Stub: 使用简单规则代替AI推理 */
+	/* 无人时关灯 */
+	if (features->presence < 0.5f) {
+		output->color_temp = COLOR_TEMP_MIN;
+		output->brightness = 0;
+		return AI_STATUS_OK;
 	}
 
-	/* 执行推理并计时 */
-	int64_t start = k_cyc_to_ns(k_cycle_get_32()) / 1000;
-	TfLiteStatus status = interpreter->Invoke();
-	int64_t end = k_cyc_to_ns(k_cycle_get_32()) / 1000;
+	/* 根据时间设置 */
+	float hour = atan2f(features->hour_sin, features->hour_cos) * 24.0f / (2.0f * 3.14159265f);
+	if (hour < 0) hour += 24.0f;
 
-	if (status != kTfLiteOk) {
-		LOG_ERR("Invoke failed: %d", status);
-		return AI_STATUS_ERROR_INVOKE;
+	/* 白天: 冷白光, 高亮度 */
+	if (hour >= 6.0f && hour < 18.0f) {
+		output->color_temp = 5000;
+		output->brightness = 100;
+	}
+	/* 傍晚: 暖白光, 中等亮度 */
+	else if (hour >= 18.0f && hour < 22.0f) {
+		output->color_temp = 3000;
+		output->brightness = 70;
+	}
+	/* 深夜: 暖黄光, 低亮度 */
+	else {
+		output->color_temp = 2700;
+		output->brightness = 30;
 	}
 
-	last_inference_us = (uint32_t)(end - start);
-
-	/* 读取输出 */
-	float color_temp, brightness;
-
-	if (output_tensor->type == kTfLiteInt8) {
-		float output_scale = output_tensor->params.scale;
-		int output_zero_point = output_tensor->params.zero_point;
-
-		if (!(output_scale > 0.0f)) {
-			LOG_ERR("Invalid output scale: %f", (double)output_scale);
-			return AI_STATUS_ERROR_TENSOR;
-		}
-
-		color_temp = (output_tensor->data.int8[0] - output_zero_point)
-			     * output_scale;
-		brightness = (output_tensor->data.int8[1] - output_zero_point)
-			     * output_scale;
-	} else {
-		color_temp = output_tensor->data.f[0];
-		brightness = output_tensor->data.f[1];
+	/* 日落临近时降低色温 */
+	if (features->sunset_proximity > 0.5f) {
+		output->color_temp = 2700;
+		output->brightness = (uint8_t)(output->brightness * 0.8f);
 	}
 
-	/* 限制范围 */
-	if (color_temp < COLOR_TEMP_MIN) color_temp = COLOR_TEMP_MIN;
-	if (color_temp > COLOR_TEMP_MAX) color_temp = COLOR_TEMP_MAX;
-	if (brightness < 0) brightness = 0;
-	if (brightness > 100) brightness = 100;
+	/* 阴天时增加亮度 */
+	if (features->weather > 50.0f) {
+		output->brightness = (uint8_t)((float)output->brightness * 1.2f);
+		if (output->brightness > 100) output->brightness = 100;
+	}
 
-	output->color_temp = (uint16_t)color_temp;
-	output->brightness = (uint8_t)brightness;
+	/* 范围限制 */
+	if (output->color_temp < COLOR_TEMP_MIN) output->color_temp = COLOR_TEMP_MIN;
+	if (output->color_temp > COLOR_TEMP_MAX) output->color_temp = COLOR_TEMP_MAX;
+	if (output->brightness > 100) output->brightness = 100;
 
-	LOG_DBG("AI infer: %dK @ %d%% (%u us)",
-		output->color_temp, output->brightness, last_inference_us);
+	last_inference_us = 100; /* Stub: 100us */
 
 	return AI_STATUS_OK;
 }
@@ -232,7 +134,7 @@ void ai_calc_time_features(float hour, ai_features_t *features)
 {
 	if (!features) return;
 
-	constexpr float PI = 3.14159265358979f;
+	const float PI = 3.14159265358979f;
 	features->hour_sin = sinf(hour * 2.0f * PI / 24.0f);
 	features->hour_cos = cosf(hour * 2.0f * PI / 24.0f);
 }
@@ -325,7 +227,7 @@ static bool ai_thread_running = false;
 
 void ai_infer_thread_fn(void)
 {
-	LOG_INF("AI inference thread started");
+	LOG_INF("AI inference thread started (stub mode)");
 
 	/* 等待AI初始化完成 */
 	while (!ai_initialized) {

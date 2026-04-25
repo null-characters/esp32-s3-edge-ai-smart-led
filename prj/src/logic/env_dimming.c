@@ -14,6 +14,7 @@
 #include "sntp_time_sync.h"
 #include "presence_state.h"
 #include "time_period.h"
+#include "lighting.h"
 
 LOG_MODULE_REGISTER(env_dim, CONFIG_LOG_DEFAULT_LEVEL);
 

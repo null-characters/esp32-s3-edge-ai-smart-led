@@ -13,13 +13,13 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
 
-/* WiFi状态 */
+/* WiFi状态 (使用 WM_ 前缀避免与 Zephyr wifi.h 冲突) */
 typedef enum {
-	WIFI_STATE_DISCONNECTED = 0,
-	WIFI_STATE_CONNECTING,
-	WIFI_STATE_CONNECTED,
-	WIFI_STATE_GOT_IP,
-	WIFI_STATE_ERROR
+	WM_WIFI_STATE_DISCONNECTED = 0,
+	WM_WIFI_STATE_CONNECTING,
+	WM_WIFI_STATE_CONNECTED,
+	WM_WIFI_STATE_GOT_IP,
+	WM_WIFI_STATE_ERROR
 } wifi_state_t;
 
 /* 重连参数 */
