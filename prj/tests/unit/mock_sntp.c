@@ -49,3 +49,12 @@ int sntp_time_get_hour(void)
 
 int sntp_time_update_rtc(void) { return 0; }
 void sntp_time_thread_fn(void) { /* no-op in test */ }
+
+float sntp_time_get_local_hour_f(void)
+{
+	local_time_t local;
+	if (sntp_time_get_local(&local) == 0) {
+		return (float)local.hour + (float)local.minute / 60.0f;
+	}
+	return -1.0f;
+}

@@ -86,6 +86,14 @@ const sun_cache_t *sun_get_cache(void);
  */
 bool sun_cache_is_valid(void);
 
+#ifdef CONFIG_TEST
+/**
+ * @brief 测试辅助: 设置缓存数据
+ * 仅在测试构建中可用
+ */
+void sun_cache_set_for_test(float sunrise, float sunset, bool valid);
+#endif
+
 /**
  * @brief 日出日落定时更新线程 (WF-025)
  */

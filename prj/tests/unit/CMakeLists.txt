@@ -12,8 +12,7 @@ include_directories(../../include)
 
 # 源文件 - 只包含被测试的模块 (排除 main.c)
 target_sources(app PRIVATE
-	# Phase 1: 基础硬件通信
-	../../src/drivers/uart_driver.c
+	# Phase 1: 基础硬件通信 (使用 mock_uart 替代 uart_driver)
 	../../src/drivers/lighting.c
 	../../src/logic/presence_state.c
 	../../src/logic/time_period.c
@@ -23,15 +22,15 @@ target_sources(app PRIVATE
 	../../src/logic/weather_api.c
 	../../src/logic/sunrise_sunset.c
 	../../src/logic/env_dimming.c
-	# Phase 3: AI推理系统 (需要mock TFLM)
+	# Phase 3: AI推理系统
 	../../src/logic/ai_infer.c
 	../../src/logic/data_logger.c
 	# Mock files
+	mock_uart.c
 	mock_pir.c
 	mock_wifi.c
 	mock_http.c
 	mock_sntp.c
-	mock_tflm.c
 	# Test files
 	test_main.c
 	test_uart_frame.c

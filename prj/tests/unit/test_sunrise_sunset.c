@@ -47,10 +47,8 @@ ZTEST(sun_api, test_sunset_proximity_range)
 	/* 初始化 */
 	sun_api_init();
 
-	/* 手动设置缓存数据 */
-	extern sun_cache_t sun_cache;
-	sun_cache.sunset_hour = 18.5f; /* 18:30 */
-	sun_cache.valid = true;
+	/* 设置缓存数据 */
+	sun_cache_set_for_test(6.5f, 18.5f, true);
 
 	/* 日落临近度应该在0-1范围内 */
 	float proximity = sun_get_sunset_proximity();
@@ -66,8 +64,7 @@ ZTEST(sun_api, test_cache_validity)
 	zassert_false(sun_cache_is_valid(), "Initial cache should be invalid");
 
 	/* 设置有效 */
-	extern sun_cache_t sun_cache;
-	sun_cache.valid = true;
+	sun_cache_set_for_test(6.0f, 18.0f, true);
 	zassert_true(sun_cache_is_valid(), "Cache should be valid after setting");
 }
 

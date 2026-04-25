@@ -24,6 +24,8 @@
 #define BRIGHTNESS_MIN       0
 #define BRIGHTNESS_MAX       100
 
+#include "rule_engine.h"  /* lighting_settings_t, 时段默认值 */
+
 /**
  * @brief 初始化照明控制模块
  * @return 0=成功, 负值=失败

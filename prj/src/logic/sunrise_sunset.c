@@ -239,6 +239,15 @@ bool sun_cache_is_valid(void)
 	return sun_cache.valid;
 }
 
+#ifdef CONFIG_TEST
+void sun_cache_set_for_test(float sunrise, float sunset, bool valid)
+{
+	sun_cache.sunrise_hour = sunrise;
+	sun_cache.sunset_hour = sunset;
+	sun_cache.valid = valid;
+}
+#endif
+
 /* ================================================================
  * 日出日落定时更新线程 (WF-025)
  * 每天凌晨更新一次

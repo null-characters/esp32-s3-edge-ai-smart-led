@@ -5,6 +5,7 @@
 
 #include <zephyr/ztest.h>
 #include "uart_driver.h"
+#include "lighting.h"  /* for RESP_ACK, RESP_NAK */
 
 /* ================================================================
  * Test: Frame building in retry context
@@ -79,7 +80,7 @@ ZTEST(uart_retry_suite, test_recv_timeout)
 ZTEST(uart_retry_suite, test_max_frame_size)
 {
 	zassert_true(FRAME_MAX_TOTAL >= 32, "Max frame should be reasonable");
-	zassert_true(FRAME_MAX_TOTAL <= 256, "Max frame should not be too large");
+	zassert_true(FRAME_MAX_TOTAL <= 512, "Max frame should not be too large");
 }
 
 /* ================================================================

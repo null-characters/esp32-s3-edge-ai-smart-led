@@ -172,7 +172,7 @@ ZTEST(fade_control_suite, test_get_current_both_null)
 /* ================================================================
  * Test: Zero duration fade acts like immediate
  * ================================================================ */
-ZZTEST(fade_control_suite, test_fade_zero_duration)
+ZTEST(fade_control_suite, test_fade_zero_duration)
 {
 	fade_control_init();
 	

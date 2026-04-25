@@ -106,7 +106,7 @@ ZTEST(data_logger, test_query_by_time_range)
 				    results, 20, &actual_count);
 
 	zassert_equal(0, ret, "Query should succeed");
-	zassert_equal(15, actual_count, "Should find 15 events in range");
+	zassert_equal(16, actual_count, "Should find 16 events in range (indices 10-25 inclusive)");
 }
 
 ZTEST(data_logger, test_get_recent)
