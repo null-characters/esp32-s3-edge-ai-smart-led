@@ -37,19 +37,19 @@ target_sources(app PRIVATE
     # 模型数据
     src/model_data.cc
     
-    # 保留 v1 模块 (兼容)
-    src/drivers/pir.c
+    # 基础驱动模块
     src/drivers/uart_driver.c
     src/drivers/lighting.c
+    
+    # 可选模块 (网络功能)
     src/drivers/wifi_manager.c
     src/drivers/sntp_time_sync.c
     src/drivers/http_client.c
-    src/logic/presence_state.c
-    src/logic/time_period.c
-    src/logic/rule_engine.c
-    src/logic/fade_control.c
     src/logic/weather_api.c
     src/logic/sunrise_sunset.c
+    
+    # 照明控制
+    src/logic/fade_control.c
     src/logic/env_dimming.c
     src/logic/data_logger.c
 )

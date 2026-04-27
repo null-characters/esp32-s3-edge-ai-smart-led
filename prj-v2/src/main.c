@@ -21,15 +21,9 @@
 #include "multimodal/multimodal_infer.h"
 #include "scene/scene_recognition.h"
 
-/* 保留 v1 模块 */
-#include "pir.h"
+/* 基础模块 */
 #include "uart_driver.h"
 #include "lighting.h"
-#include "wifi_manager.h"
-#include "sntp_time_sync.h"
-#include "weather_api.h"
-#include "sunrise_sunset.h"
-#include "fade_control.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
