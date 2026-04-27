@@ -46,33 +46,35 @@
 prj-v3/
 ├── main/                       # ESP-IDF 主入口
 │   ├── CMakeLists.txt
-│   └── src/
-│       ├── app_main.c          # 应用入口
-│       ├── voice/              # 语音交互模块 ⭐ 新增
-│       │   ├── voice_assistant.c   # ESP-SR 集成
-│       │   ├── wake_word.c         # 唤醒词处理（"小白网关"）
-│       │   └── command_handler.c   # 命令词处理（50+ 条）
-│       ├── arbitration/        # 双轨仲裁模块 ⭐ 新增
-│       │   └── priority_arbiter.c  # 语音命令优先级仲裁
-│       ├── multimodal/         # 多模态推理层（迁移自 prj-v2）
-│       │   ├── multimodal_infer.c
-│       │   └── tflm_manager.c
-│       ├── audio/              # 音频处理层
-│       │   ├── inmp441_driver.c
-│       │   └── audio_pipeline.c    # ESP-ADF 集成
-│       ├── radar/              # 雷达处理层
-│       │   └── ld2410_driver.c
-│       ├── control/            # 控制模块
-│       │   ├── lighting.c
-│       │   ├── rule_engine.c
-│       │   └── fade_control.c
-│       └── network/            # 网络模块
-│           ├── wifi_manager.c
-│           └── sntp_sync.c
-├── components/                 # ESP-IDF 组件
-│   ├── esp-sr/                 # ESP-SR 语音识别组件 ⭐
-│   ├── esp-adf/                # ESP-ADF 音频开发框架 ⭐
-│   └── tflite-micro/           # TFLM 组件
+│   ├── include/                # 头文件
+│   │   ├── ld2410_driver.h     # LD2410 雷达驱动接口
+│   │   ├── mfcc.h              # MFCC 特征提取接口
+│   │   └── wake_word.h         # 唤醒词检测接口
+│   ├── src/
+│   │   ├── main.c              # 应用入口
+│   │   ├── voice/              # 语音交互模块
+│   │   │   └── wake_word.c     # 唤醒词处理（"小白网关"）
+│   │   ├── multimodal/         # 多模态推理层
+│   │   │   └── tflm_allocator.c    # TFLM 内存分配
+│   │   ├── audio/              # 音频处理层
+│   │   │   └── mfcc.c          # MFCC 特征提取
+│   │   ├── radar/              # 雷达处理层
+│   │   │   └── ld2410_driver.c # LD2410 驱动
+│   │   ├── drivers/            # 设备驱动层
+│   │   │   ├── led_pwm.c       # LED PWM 驱动
+│   │   │   ├── uart_driver.c   # UART 通用驱动
+│   │   │   └── i2s_driver.c    # I2S 麦克风驱动
+│   │   └── network/            # 网络模块
+│   │       └── wifi_sta.c      # Wi-Fi 站点模式
+│   └── test/                   # 单元测试 ⭐ 新增
+│       ├── test_main.c         # 测试入口
+│       ├── test_ld2410.c       # LD2410 驱动测试
+│       ├── test_mfcc.c         # MFCC 特征提取测试
+│       └── test_wake_word.c    # 唤醒词模块测试
+├── managed_components/         # ESP-IDF 组件管理器下载的组件
+│   ├── espressif__esp-sr/      # ESP-SR 语音识别 ⭐
+│   ├── espressif__esp-tflite-micro/  # TFLM 推理框架 ⭐
+│   └── espressif__esp-dsp/     # ESP-DSP 数字信号处理 ⭐
 ├── models/                     # AI 模型
 │   ├── sound_classifier.tflite # 声音分类器 (~30KB)
 │   ├── radar_analyzer.tflite   # 雷达分析器 (~2KB)
@@ -378,11 +380,16 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| ESP-IDF 项目框架 | ⏳ 规划中 | 从 Zephyr 迁移 |
-| ESP-SR 集成 | ⏳ 规划中 | WakeNet + MultiNet |
+| ESP-IDF 项目框架 | ✅ 已完成 | ESP-IDF v6.1-dev |
+| ESP-SR 集成 | ✅ 已完成 | WakeNet (wn_xiaobaitong) |
+| LD2410 雷达驱动 | ✅ 已完成 | UART 驱动、数据解析、特征提取 |
+| MFCC 特征提取 | ✅ 已完成 | ESP-DSP 加速，40 维特征 |
+| 唤醒词检测封装 | ✅ 已完成 | wake_word.c/h |
+| TFLM 内存分配 | ✅ 已完成 | PSRAM Arena 分配器 |
+| Unity 单元测试 | ✅ 已完成 | 25 个测试用例 |
 | 语音命令处理 | ⏳ 规划中 | 50+ 条命令词 |
 | 双轨仲裁机制 | ⏳ 规划中 | 语音优先级仲裁 |
-| 多模态推理迁移 | ⏳ 规划中 | TFLM 集成到 ESP-IDF |
+| 多模态推理迁移 | 🚧 进行中 | 模型加载机制 |
 | ESP-ADF 集成 | ⏳ 规划中 | 音频管道框架 |
 
 ### 多模态版本 (prj-v2，Zephyr，已归档)
@@ -453,6 +460,6 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 **维护者**: null-characters
 **创建日期**: 2026-04-24
-**最后更新**: 2026-04-27
+**最后更新**: 2026-04-27 23:30
 **ESP-IDF 版本**: v5.4+
 **架构版本**: prj-v3 (语音交互版本)
