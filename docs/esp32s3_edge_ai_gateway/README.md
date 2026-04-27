@@ -4,6 +4,25 @@
 
 ---
 
+## 目录结构
+
+```
+esp32s3_edge_ai_gateway/
+├── README.md                       # 本文件
+├── design-docs/                    # 设计文档
+│   ├── 01-hardware-overview.md
+│   ├── 02-system-architecture.md
+│   ├── 03-communication-protocol.md
+│   ├── 04-ai-inference.md
+│   ├── 05-implementation-roadmap.md
+│   └── 06-meeting-room-lighting-mvp.md
+├── plan-v1-pir-mlp/                # v1 规划文档
+├── plan-v2-multimodal/             # v2 规划文档
+└── plan-v3-voice-interaction/      # v3 规划文档 ⭐
+```
+
+---
+
 ## 版本演进
 
 | 版本 | 代号 | 框架 | 核心能力 | 状态 |
@@ -14,20 +33,20 @@
 
 ---
 
-## 文档索引
-
-### 设计文档
+## 设计文档
 
 | 文档 | 说明 |
 |------|------|
-| [01-hardware-overview.md](01-hardware-overview.md) | MCU 硬件能力与板级配置 |
-| [02-system-architecture.md](02-system-architecture.md) | 系统架构设计 |
-| [03-communication-protocol.md](03-communication-protocol.md) | 通信协议设计（Modbus/BLE） |
-| [04-ai-inference.md](04-ai-inference.md) | AI 推理方案与 PSRAM 内存规划 |
-| [05-implementation-roadmap.md](05-implementation-roadmap.md) | 分阶段实施路线图 |
-| [06-meeting-room-lighting-mvp.md](06-meeting-room-lighting-mvp.md) | 会议室智能照明 MVP 方案 |
+| [01-hardware-overview.md](design-docs/01-hardware-overview.md) | MCU 硬件能力与板级配置 |
+| [02-system-architecture.md](design-docs/02-system-architecture.md) | 系统架构设计 |
+| [03-communication-protocol.md](design-docs/03-communication-protocol.md) | 通信协议设计（Modbus/BLE） |
+| [04-ai-inference.md](design-docs/04-ai-inference.md) | AI 推理方案与 PSRAM 内存规划 |
+| [05-implementation-roadmap.md](design-docs/05-implementation-roadmap.md) | 分阶段实施路线图 |
+| [06-meeting-room-lighting-mvp.md](design-docs/06-meeting-room-lighting-mvp.md) | 会议室智能照明 MVP 方案 |
 
-### 规划文档（按版本）
+---
+
+## 规划文档（按版本）
 
 | 目录 | 版本 | 说明 |
 |------|------|------|
@@ -79,7 +98,7 @@
 - **特征维度多**：时间、天气、日落、人员存在，适合神经网络
 - **用户感知强**：效果立即可见，便于验证迭代
 
-详见 [06-meeting-room-lighting-mvp.md](06-meeting-room-lighting-mvp.md)
+详见 [06-meeting-room-lighting-mvp.md](design-docs/06-meeting-room-lighting-mvp.md)
 
 ### 场景二：应急照明系统
 
