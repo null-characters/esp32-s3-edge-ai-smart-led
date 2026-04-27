@@ -39,10 +39,32 @@
 
 ## v3 规划文档索引
 
+### 总体规划与追踪
+
 | 文档 | 说明 |
 |------|------|
 | [01-语音交互升级总体规划.md](plan-v3-voice-interaction/01-语音交互升级总体规划.md) | 架构设计、阶段规划、命令设计 |
 | [03-任务追踪表.md](plan-v3-voice-interaction/03-任务追踪表.md) | 开发任务进度追踪 |
+
+### 大模块任务规划
+
+| 文档 | 说明 |
+|------|------|
+| [02-大模块任务规划-框架迁移模块.md](plan-v3-voice-interaction/02-大模块任务规划-框架迁移模块.md) | Phase 1: ESP-IDF 框架迁移 |
+| [02-大模块任务规划-语音交互模块.md](plan-v3-voice-interaction/02-大模块任务规划-语音交互模块.md) | Phase 2: ESP-SR 语音集成 |
+| [02-大模块任务规划-多模态迁移模块.md](plan-v3-voice-interaction/02-大模块任务规划-多模态迁移模块.md) | Phase 3: TFLM 多模态迁移 |
+| [02-大模块任务规划-仲裁机制模块.md](plan-v3-voice-interaction/02-大模块任务规划-仲裁机制模块.md) | Phase 4: 优先级仲裁机制 |
+| [02-大模块任务规划-集成测试模块.md](plan-v3-voice-interaction/02-大模块任务规划-集成测试模块.md) | Phase 5: 端到端集成测试 |
+
+### 最小任务单元清单
+
+| 文档 | 说明 |
+|------|------|
+| [04-最小任务单元-Phase1-框架迁移.md](plan-v3-voice-interaction/04-最小任务单元-Phase1-框架迁移.md) | Phase 1 原子任务 |
+| [04-最小任务单元-Phase2-语音集成.md](plan-v3-voice-interaction/04-最小任务单元-Phase2-语音集成.md) | Phase 2 原子任务 |
+| [04-最小任务单元-Phase3-多模态迁移.md](plan-v3-voice-interaction/04-最小任务单元-Phase3-多模态迁移.md) | Phase 3 原子任务 |
+| [04-最小任务单元-Phase4-仲裁机制.md](plan-v3-voice-interaction/04-最小任务单元-Phase4-仲裁机制.md) | Phase 4 原子任务 |
+| [04-最小任务单元-Phase5-集成测试.md](plan-v3-voice-interaction/04-最小任务单元-Phase5-集成测试.md) | Phase 5 原子任务 |
 
 ---
 
