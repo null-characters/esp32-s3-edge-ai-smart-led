@@ -36,6 +36,7 @@ target_sources(app PRIVATE
     
     # 模型数据
     src/model_data.cc
+    src/radar_model_data.cc
     
     # 基础驱动模块
     src/drivers/uart_driver.c
