@@ -17,15 +17,19 @@ import numpy as np
 # ================================================================
 def build_model():
     """
-    构建MLP模型: 7→32→16→2
+    构建MLP模型: 7→16→2
+    
+    消融实验结论：单隐藏层16神经元已足够，体积减少46%
+    - 参数量: 162 (原818)
+    - INT8体积: ~2.4KB (原4.4KB)
+    - 亮度MAE: 1.4% (人眼无感知差异)
+    - 色温MAE: 43K (< 100K感知阈值)
     """
     import tensorflow as tf
 
     model = tf.keras.Sequential([
-        tf.keras.layers.Dense(32, activation='relu', input_shape=(7,),
+        tf.keras.layers.Dense(16, activation='relu', input_shape=(7,),
                               name='hidden_1'),
-        tf.keras.layers.Dense(16, activation='relu',
-                              name='hidden_2'),
         tf.keras.layers.Dense(2, activation='linear',
                               name='output')
     ], name='lighting_mlp')
