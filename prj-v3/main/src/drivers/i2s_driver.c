@@ -4,9 +4,11 @@
  */
 
 #include "i2s_driver.h"
-#include "driver/i2s_std.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+
+/* ESP-IDF v6.1 I2S 头文件 */
+#include "driver/i2s_std.h"
 
 static const char *TAG = "I2S_DRV";
 

@@ -66,3 +66,6 @@ Thumbs.db
 *.hex
 *.map
 *.uf2
+
+# ESP-IDF managed components (依赖包，不提交)
+managed_components/

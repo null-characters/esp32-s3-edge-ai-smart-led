@@ -1,6 +1,12 @@
-# Phase 1: 基础框架迁移
-# ESP-SR 和其他组件将在后续阶段集成
+# prj-v3 组件依赖
+# ESP-IDF v6.1-dev
 
 dependencies:
   espressif/cjson:
+    version: "*"
+  espressif/esp-sr:
+    version: "*"
+  espressif/esp-tflite-micro:
+    version: "*"
+  espressif/esp-dsp:
     version: "*"

@@ -5,8 +5,21 @@ idf_component_register(
          "src/drivers/i2s_driver.c"
          "src/network/wifi_sta.c"
          "src/multimodal/tflm_allocator.c"
+         "src/radar/ld2410_driver.c"
+         "src/audio/mfcc.c"
+         "src/voice/wake_word.c"
+         # 单元测试文件
+         "test/test_main.c"
+         "test/test_ld2410.c"
+         "test/test_mfcc.c"
+         "test/test_wake_word.c"
     INCLUDE_DIRS "include"
                  "src/drivers"
                  "src/network"
                  "src/multimodal"
+                 "src/radar"
+                 "src/audio"
+                 "src/voice"
+                 "test"
+    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_driver_i2s esp_driver_uart esp_driver_ledc
 )
