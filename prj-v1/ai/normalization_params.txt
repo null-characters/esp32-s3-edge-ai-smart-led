@@ -1,0 +1,11 @@
+# P1: Min-Max Normalization Parameters
+# Output is already in [0, 1], denormalize to get real values
+# color_temp = output[0] * COLOR_TEMP_RANGE + COLOR_TEMP_MIN
+# brightness = output[1] * BRIGHTNESS_RANGE + BRIGHTNESS_MIN
+
+COLOR_TEMP_MIN=2700
+COLOR_TEMP_MAX=6500
+COLOR_TEMP_RANGE=3800
+BRIGHTNESS_MIN=0
+BRIGHTNESS_MAX=100
+BRIGHTNESS_RANGE=100
