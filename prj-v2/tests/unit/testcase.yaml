@@ -1,0 +1,33 @@
+tests:
+  prj.unit.presence_state:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.fade_control:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.uart_retry:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.lighting_interface:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.command_parser:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.http_client:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.sntp_time_sync:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5
+  prj.unit.weather_api:
+    platform_allow: native_sim
+    tags: unit
+    timeout: 5

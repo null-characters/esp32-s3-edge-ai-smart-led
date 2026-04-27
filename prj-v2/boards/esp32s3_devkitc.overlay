@@ -1,0 +1,105 @@
+/* ESP32-S3 DevKit C Overlay for Multimodal AI Gateway V2
+ * 
+ * 硬件接口：
+ * - UART0: 调试控制台 (USB-CDC)
+ * - UART1: LD2410 雷达 (TX=GPIO17, RX=GPIO18)
+ * - I2S0: INMP441 麦克风 (BCK=GPIO4, WS=GPIO5, DO=GPIO6)
+ * - GPIO: PIR 传感器 (GPIO7, 可选)
+ */
+
+/ {
+    chosen {
+        zephyr,console = &uart0;
+        zephyr,shell-uart = &uart0;
+    };
+
+    /* 雷达和麦克风电源控制 */
+    ld2410_power: ld2410-power {
+        compatible = "regulator-fixed";
+        regulator-name = "ld2410-power";
+        regulator-min-microvolt = <5000000>;
+        regulator-max-microvolt = <5000000>;
+        enable-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+        regulator-boot-on;
+        regulator-always-on;
+    };
+};
+
+/* UART0: 调试控制台 */
+&uart0 {
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart0_default>;
+    pinctrl-names = "default";
+};
+
+&pinctrl {
+    uart0_default: uart0-default {
+        group1 {
+            pinmux = <UART0_TX_GPIO43>;
+            output-high;
+        };
+        group2 {
+            pinmux = <UART0_RX_GPIO44>;
+            bias-pull-up;
+            input-enable;
+        };
+    };
+};
+
+/* UART1: LD2410 雷达通信 */
+&uart1 {
+    status = "okay";
+    current-speed = <256000>;
+    pinctrl-0 = <&uart1_default>;
+    pinctrl-names = "default";
+    
+    ld2410: ld2410-radar {
+        compatible = "ld2410,radar";
+        status = "okay";
+    };
+};
+
+&pinctrl {
+    uart1_default: uart1-default {
+        group1 {
+            pinmux = <UART1_TX_GPIO17>;
+            output-high;
+        };
+        group2 {
+            pinmux = <UART1_RX_GPIO18>;
+            bias-pull-up;
+            input-enable;
+        };
+    };
+};
+
+/* I2S0: INMP441 麦克风 */
+&i2s0 {
+    status = "okay";
+    pinctrl-0 = <&i2s0_default>;
+    pinctrl-names = "default";
+    
+    inmp441: inmp441-mic {
+        compatible = "inmp441,microphone";
+        status = "okay";
+    };
+};
+
+&pinctrl {
+    i2s0_default: i2s0-default {
+        group1 {
+            pinmux = <I2S0_MCLK_GPIO0>,
+                     <I2S0_BCK_GPIO4>,
+                     <I2S0_WS_GPIO5>,
+                     <I2S0_DO_GPIO6>;
+            output-enable;
+        };
+    };
+};
+
+/* PSRAM 配置 (8MB Octal) */
+&psram0 {
+    status = "okay";
+    psram-bus-width = <8>;
+};
