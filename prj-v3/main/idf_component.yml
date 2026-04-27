@@ -1,0 +1,6 @@
+# Phase 1: 基础框架迁移
+# ESP-SR 和其他组件将在后续阶段集成
+
+dependencies:
+  espressif/cjson:
+    version: "*"

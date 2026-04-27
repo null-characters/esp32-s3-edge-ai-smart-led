@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+sdkconfig
+sdkconfig.old
+
+# Binary files
+*.bin
+*.elf
+*.map
+*.hex
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Test artifacts
+test_output/
+coverage/
