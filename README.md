@@ -1,14 +1,18 @@
 # ESP32-S3 Edge AI 智能照明网关
 
-基于 Zephyr RTOS 的 ESP32-S3 边缘 AI 智能照明控制系统，支持会议室场景的智能调光与设备管理。
+基于 ESP-IDF 的 ESP32-S3 边缘 AI 智能照明控制系统，集成多模态感知与离线语音交互，支持会议室场景的智能调光与设备管理。
+
+> **架构巨变公告**：项目已从 Zephyr RTOS 迁移到 ESP-IDF，以集成 ESP-SR 语音识别框架，实现从"感知设备"到"交互设备"的本质跨越。详见 [架构巨变思考](docs/knowledge/from-perception-to-interaction.md)。
 
 ---
 
 ## 项目简介
 
-本项目是一个完整的智能照明解决方案，结合 ESP32-S3 的 AI 推理能力和 Zephyr RTOS 的实时性能，实现以下核心功能：
+本项目是一个完整的智能照明解决方案，结合 ESP32-S3 的 AI 推理能力和 ESP-IDF 的丰富生态，实现以下核心功能：
 
+- **离线语音交互** — ESP-SR 框架集成，支持自定义唤醒词（"小白网关"）与 50+ 条命令词，无需云端
 - **多模态 AI 推理** — 毫米波雷达 + MEMS 麦克风 + 环境特征的三模态融合，本地运行 INT8 量化模型 (~35KB)
+- **双轨并行架构** — 轨道一（自动感知控制）+ 轨道二（语音命令控制），语音命令优先于自动决策
 - **智能调光控制** — 基于环境感知的多层调光策略：规则引擎 → AI 推理 → 渐变控制
 - **环境感知** — LD2410 毫米波雷达（距离/速度/能量）、INMP441 麦克风（声音分类）、SNTP 时间同步、天气 API
 - **场景识别** — 自动识别会议高潮、专注工作、汇报演示、休息放松等 5+ 种场景
@@ -36,7 +40,50 @@
 
 ## 软件架构
 
-### prj-v2（多模态版本，推荐）
+### prj-v3（语音交互版本，ESP-IDF，开发中）
+
+```
+prj-v3/
+├── main/                       # ESP-IDF 主入口
+│   ├── CMakeLists.txt
+│   └── src/
+│       ├── app_main.c          # 应用入口
+│       ├── voice/              # 语音交互模块 ⭐ 新增
+│       │   ├── voice_assistant.c   # ESP-SR 集成
+│       │   ├── wake_word.c         # 唤醒词处理（"小白网关"）
+│       │   └── command_handler.c   # 命令词处理（50+ 条）
+│       ├── arbitration/        # 双轨仲裁模块 ⭐ 新增
+│       │   └── priority_arbiter.c  # 语音命令优先级仲裁
+│       ├── multimodal/         # 多模态推理层（迁移自 prj-v2）
+│       │   ├── multimodal_infer.c
+│       │   └── tflm_manager.c
+│       ├── audio/              # 音频处理层
+│       │   ├── inmp441_driver.c
+│       │   └── audio_pipeline.c    # ESP-ADF 集成
+│       ├── radar/              # 雷达处理层
+│       │   └── ld2410_driver.c
+│       ├── control/            # 控制模块
+│       │   ├── lighting.c
+│       │   ├── rule_engine.c
+│       │   └── fade_control.c
+│       └── network/            # 网络模块
+│           ├── wifi_manager.c
+│           └── sntp_sync.c
+├── components/                 # ESP-IDF 组件
+│   ├── esp-sr/                 # ESP-SR 语音识别组件 ⭐
+│   ├── esp-adf/                # ESP-ADF 音频开发框架 ⭐
+│   └── tflite-micro/           # TFLM 组件
+├── models/                     # AI 模型
+│   ├── sound_classifier.tflite # 声音分类器 (~30KB)
+│   ├── radar_analyzer.tflite   # 雷达分析器 (~2KB)
+│   ├── fusion_model.tflite     # 融合决策器 (~3KB)
+│   └── wake_word_model.bin     # 唤醒词模型 (ESP-SR)
+└── CMakeLists.txt
+```
+
+### prj-v2（多模态版本，Zephyr，已归档）
+
+> **注意**：prj-v2 为 Zephyr 版本，已停止维护，代码保留供参考。新开发请使用 prj-v3。
 
 ```
 prj-v2/
@@ -74,7 +121,9 @@ prj-v2/
 └── CMakeLists.txt              # 构建配置
 ```
 
-### prj（经典版本，PIR + MLP）
+### prj（经典版本，PIR + MLP，已归档）
+
+> **注意**：prj 为 Zephyr 版本，已停止维护，代码保留供参考。新开发请使用 prj-v3。
 
 ```
 prj/
@@ -96,7 +145,30 @@ prj/
 
 ## AI 模型
 
-### 多模态架构（prj-v2）
+### 语音交互架构（prj-v3，ESP-IDF）
+
+| 模块 | 框架 | 功能 | 大小 |
+|------|------|------|------|
+| **唤醒词检测** | WakeNet (ESP-SR) | "小白网关" 唤醒 | ~100 KB |
+| **命令词识别** | MultiNet (ESP-SR) | 50+ 条命令词 | ~200 KB |
+| **音频前端** | AFE (ESP-SR) | AEC/BSS/NS | 内置 |
+| **声音分类器** | TFLM | 场景声音识别 | ~30 KB |
+| **雷达分析器** | TFLM | 运动特征提取 | ~2 KB |
+| **融合决策器** | TFLM | 最终控制决策 | ~3 KB |
+| **总计** | - | - | **~335 KB** |
+
+**支持的语音命令**：
+
+| 命令类型 | 示例 | 效果 |
+|----------|------|------|
+| **场景切换** | "打开专注模式" | 4000K, 60% |
+| **亮度调节** | "调亮一点" | 亮度 +20% |
+| **色温调节** | "换成暖光" | 色温 3000K |
+| **模式切换** | "切换演示模式" | 主灯 30%, 黑板灯亮 |
+| **查询状态** | "现在是什么模式" | TTS 回复 |
+| **取消操作** | "恢复自动" | 回到自动控制 |
+
+### 多模态架构（prj-v2，Zephyr）
 
 | 模型 | 输入 | 输出 | 大小 (INT8) | 用途 |
 |------|------|------|-------------|------|
@@ -140,9 +212,9 @@ prj/
 
 ### 环境要求
 
-- **开发平台**: macOS (推荐) / Linux
-- **工具链**: Zephyr SDK 0.17.0+
-- **依赖管理**: west (Zephyr 元工具)
+- **开发平台**: macOS (推荐) / Linux / Windows
+- **工具链**: ESP-IDF v5.4+
+- **依赖管理**: ESP-IDF Component Manager
 
 ### 安装步骤
 
@@ -150,28 +222,27 @@ prj/
 
 ```bash
 cd ~/workspace
-git clone https://github.com/null-characters/esp32-s3-edge-ai-smart-led.git zephyrproject
-cd zephyrproject
+git clone https://github.com/null-characters/esp32-s3-edge-ai-smart-led.git
+cd esp32-s3-edge-ai-smart-led
 ```
 
-2. **初始化 Zephyr 工作区**
+2. **安装 ESP-IDF**
 
 ```bash
-west init -l
-west update
+# macOS / Linux
+mkdir -p ~/esp
+cd ~/esp
+git clone --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf
+./install.sh esp32s3
+. ./export.sh
 ```
 
-3. **安装依赖**
+3. **配置环境变量**
 
 ```bash
-pip3 install --user -r zephyr/scripts/requirements.txt
-```
-
-4. **配置环境变量**
-
-```bash
-export ZEPHYR_BASE="$HOME/workspace/zephyrproject/zephyr"
-export ZEPHYR_SDK_INSTALL_DIR="$HOME/zephyr-sdk/zephyr-sdk-0.17.0"
+# 添加到 ~/.zshrc 或 ~/.bashrc
+alias get_idf='. ~/esp/esp-idf/export.sh'
 ```
 
 详细环境搭建指南请参考 [docs/环境搭建报告.md](docs/环境搭建报告.md)
@@ -182,13 +253,20 @@ export ZEPHYR_SDK_INSTALL_DIR="$HOME/zephyr-sdk/zephyr-sdk-0.17.0"
 
 ### 编译项目
 
-**多模态版本（推荐）**:
+**语音交互版本（prj-v3，推荐）**:
+```bash
+cd ~/workspace/esp32-s3-edge-ai-smart-led/prj-v3
+idf.py set-target esp32s3
+idf.py build
+```
+
+**多模态版本（prj-v2，Zephyr，已归档）**:
 ```bash
 cd ~/workspace/zephyrproject
 west build -b esp32s3_devkitc/esp32s3/procpu prj-v2 -d build-v2
 ```
 
-**经典版本**:
+**经典版本（prj，Zephyr，已归档）**:
 ```bash
 cd ~/workspace/zephyrproject
 west build -b esp32s3_devkitc/esp32s3/procpu prj -d build
@@ -197,16 +275,24 @@ west build -b esp32s3_devkitc/esp32s3/procpu prj -d build
 ### 烧录固件
 
 ```bash
-# 多模态版本
+# 语音交互版本 (ESP-IDF)
+cd prj-v3
+idf.py -p /dev/ttyUSB0 flash
+
+# 多模态版本 (Zephyr)
 west flash -d build-v2
 
-# 经典版本
+# 经典版本 (Zephyr)
 west flash -d build
 ```
 
 ### 监控串口输出
 
 ```bash
+# ESP-IDF
+idf.py -p /dev/ttyUSB0 monitor
+
+# Zephyr
 west espressif monitor -d build
 ```
 
@@ -214,10 +300,15 @@ west espressif monitor -d build
 
 ## 测试
 
-### 嵌入式单元测试 (Twister)
+### 嵌入式单元测试
 
-项目使用 Twister 测试框架，支持 `native_sim` 平台快速验证：
+**ESP-IDF 版本 (prj-v3)**:
+```bash
+cd prj-v3
+idf.py test
+```
 
+**Zephyr 版本 (prj-v2 / prj)**:
 ```bash
 # 运行所有单元测试（多模态版本）
 cd $ZEPHYR_BASE
@@ -269,6 +360,8 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 | 文档 | 说明 |
 |------|------|
+| [语音识别方案评估与决策](docs/knowledge/voice-recognition-evaluation.md) | ESP-SR 与 Zephyr 兼容性调研，迁移决策 ⭐ |
+| [架构巨变思考](docs/knowledge/from-perception-to-interaction.md) | 从"感知设备"到"交互设备"的本质跨越 ⭐ |
 | [边缘 AI 架构深度解析](docs/knowledge/edge-ai-architecture-deep-dive.md) | 边缘 AI 理论与技术选型 |
 | [边缘 AI 脑暴纪要](docs/knowledge/edge-ai-brainstorming-summary.md) | 架构设计脑暴纪要 |
 | [多模态 AI 升级路线图](docs/knowledge/multimodal-ai-upgrade-roadmap.md) | 多模态升级技术路线 |
@@ -279,7 +372,18 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 ## 项目状态
 
-### 多模态版本 (prj-v2)
+### 语音交互版本 (prj-v3，ESP-IDF)
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| ESP-IDF 项目框架 | ⏳ 规划中 | 从 Zephyr 迁移 |
+| ESP-SR 集成 | ⏳ 规划中 | WakeNet + MultiNet |
+| 语音命令处理 | ⏳ 规划中 | 50+ 条命令词 |
+| 双轨仲裁机制 | ⏳ 规划中 | 语音优先级仲裁 |
+| 多模态推理迁移 | ⏳ 规划中 | TFLM 集成到 ESP-IDF |
+| ESP-ADF 集成 | ⏳ 规划中 | 音频管道框架 |
+
+### 多模态版本 (prj-v2，Zephyr，已归档)
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
@@ -293,7 +397,7 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 | 融合模型训练 | 🚧 进行中 | 多模态融合网络 |
 | 场景识别 | ⏳ 规划中 | 5+ 种场景自动识别 |
 
-### 经典版本 (prj)
+### 经典版本 (prj，Zephyr，已归档)
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
@@ -311,10 +415,19 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 ## 技术栈
 
+### prj-v3 (ESP-IDF)
+
+- **[ESP-IDF](https://docs.espressif.com/projects/esp-idf/)** — Espressif 官方 IoT 开发框架
+- **[ESP-SR](https://github.com/espressif/esp-sr)** — 语音识别框架（WakeNet + MultiNet）
+- **[ESP-ADF](https://github.com/espressif/esp-adf)** — 音频开发框架
+- **[TensorFlow Lite Micro](https://www.tensorflow.org/lite/microcontrollers)** — 边缘 AI 推理框架
+- **[TensorFlow](https://www.tensorflow.org/)** — 模型训练与量化
+
+### prj-v2 / prj (Zephyr，已归档)
+
 - **[Zephyr RTOS](https://zephyrproject.org/)** — 实时操作系统内核
 - **[ESP-IDF HAL](https://docs.espressif.com/projects/esp-idf/)** — ESP32 硬件抽象层
 - **[TensorFlow Lite Micro](https://www.tensorflow.org/lite/microcontrollers)** — 边缘 AI 推理框架
-- **[TensorFlow](https://www.tensorflow.org/)** — 模型训练与量化
 - **[Bluetooth Mesh](https://www.bluetooth.com/bluetooth-resources/?types=mesh)** — 设备组网协议
 
 ---
@@ -329,14 +442,15 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 欢迎提交 Issue 和 PR！请确保：
 
-1. 代码符合 Zephyr 编码规范
+1. 代码符合 ESP-IDF 编码规范
 2. 新增功能包含单元测试
 3. AI 模型变更需运行 `pytest prj/ai/test_model.py` 或 `pytest prj-v2/ai/test_model.py` 验证
-4. 提交前运行 Twister 测试验证嵌入式测试通过
+4. 提交前运行 `idf.py test` 验证嵌入式测试通过
 
 ---
 
 **维护者**: null-characters
 **创建日期**: 2026-04-24
 **最后更新**: 2026-04-27
-**Zephyr 版本**: 4.2.0
+**ESP-IDF 版本**: v5.4+
+**架构版本**: prj-v3 (语音交互版本)
