@@ -353,8 +353,10 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 | [通信协议](docs/esp32s3_edge_ai_gateway/03-communication-protocol.md) | Bluetooth Mesh / Wi-Fi 协议栈 |
 | [AI 推理](docs/esp32s3_edge_ai_gateway/04-ai-inference.md) | TensorFlow Lite Micro 集成 |
 | [MVP 规划](docs/esp32s3_edge_ai_gateway/06-meeting-room-lighting-mvp.md) | 会议室照明 MVP 开发计划 |
-| [多模态升级总体规划](docs/esp32s3_edge_ai_gateway/plan/01-多模态升级总体规划.md) | 雷达+麦克风多模态架构设计 |
-| [任务追踪表](docs/esp32s3_edge_ai_gateway/plan/03-任务追踪表.md) | 开发任务进度追踪 |
+| [语音交互升级总体规划](docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/01-语音交互升级总体规划.md) | v3 语音交互架构设计 ⭐ |
+| [v3 任务追踪表](docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/03-任务追踪表.md) | v3 开发任务进度追踪 ⭐ |
+| [多模态升级总体规划](docs/esp32s3_edge_ai_gateway/plan-v2-multimodal/01-多模态升级总体规划.md) | v2 雷达+麦克风多模态架构设计 |
+| [v2 任务追踪表](docs/esp32s3_edge_ai_gateway/plan-v2-multimodal/03-任务追踪表.md) | v2 开发任务进度追踪 |
 
 ### 知识库
 

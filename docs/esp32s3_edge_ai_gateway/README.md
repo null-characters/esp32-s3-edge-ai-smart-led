@@ -1,20 +1,50 @@
-# ESP32-S3 边缘AI网关 - 脑暴方案
+# ESP32-S3 边缘AI网关 - 文档索引
 
-> 状态：脑暴/想法阶段  
-> 日期：2026-04-23  
-> 硬件：ESP32-S3 N16R8 (WROOM-1 模组)  
-> RTOS：Zephyr RTOS
+> 本目录包含项目各版本的规划文档，按版本组织
+
+---
+
+## 版本演进
+
+| 版本 | 代号 | 框架 | 核心能力 | 状态 |
+|------|------|------|---------|------|
+| v1 | PIR+MLP | Zephyr | 人体存在感知 + MLP 调光 | ✅ 已归档 |
+| v2 | 多模态 | Zephyr | 雷达+麦克风 + 多模态融合 | ✅ 已归档 |
+| v3 | 语音交互 | ESP-IDF | 多模态 + 离线语音命令 | 🚧 开发中 |
+
+---
 
 ## 文档索引
 
+### 设计文档
+
 | 文档 | 说明 |
 |------|------|
-| [01-hardware-overview.md](01-hardware-overview.md) | MCU硬件能力与Zephyr板级配置 |
+| [01-hardware-overview.md](01-hardware-overview.md) | MCU 硬件能力与板级配置 |
 | [02-system-architecture.md](02-system-architecture.md) | 系统架构设计 |
 | [03-communication-protocol.md](03-communication-protocol.md) | 通信协议设计（Modbus/BLE） |
-| [04-ai-inference.md](04-ai-inference.md) | AI推理方案与PSRAM内存规划 |
+| [04-ai-inference.md](04-ai-inference.md) | AI 推理方案与 PSRAM 内存规划 |
 | [05-implementation-roadmap.md](05-implementation-roadmap.md) | 分阶段实施路线图 |
 | [06-meeting-room-lighting-mvp.md](06-meeting-room-lighting-mvp.md) | 会议室智能照明 MVP 方案 |
+
+### 规划文档（按版本）
+
+| 目录 | 版本 | 说明 |
+|------|------|------|
+| [plan-v1-pir-mlp/](plan-v1-pir-mlp/) | v1 | PIR + MLP 经典版本规划 |
+| [plan-v2-multimodal/](plan-v2-multimodal/) | v2 | 多模态版本规划 |
+| [plan-v3-voice-interaction/](plan-v3-voice-interaction/) | v3 | 语音交互版本规划 ⭐ |
+
+---
+
+## v3 规划文档索引
+
+| 文档 | 说明 |
+|------|------|
+| [01-语音交互升级总体规划.md](plan-v3-voice-interaction/01-语音交互升级总体规划.md) | 架构设计、阶段规划、命令设计 |
+| [03-任务追踪表.md](plan-v3-voice-interaction/03-任务追踪表.md) | 开发任务进度追踪 |
+
+---
 
 ## 应用场景
 
@@ -36,3 +66,7 @@
 - **安全约束高**：断电照明是安全功能，AI 不能绕过底线
 - **决策频率低**：断电事件稀少，数据积累慢
 - **AI 价值有限**：电池健康预测、自适应调光等辅助功能
+
+---
+
+*最后更新：2026-04-27*
