@@ -10,6 +10,7 @@
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include <math.h>
+#include <esp_heap_caps.h>
 #include "multimodal_infer.h"
 
 /* TensorFlow Lite Micro 头文件 */
@@ -19,8 +20,15 @@
 
 LOG_MODULE_REGISTER(multimodal, LOG_LEVEL_INF);
 
-/* Tensor Arena 大小 */
-#define TENSOR_ARENA_SIZE  (64 * 1024)  /* 64KB */
+/* 
+ * Tensor Arena 配置
+ * 
+ * 重要：三个模型使用独立的 Arena，避免内存踩踏！
+ * 参考：01-多模态升级总体规划.md 第六章深水区三
+ */
+#define SOUND_ARENA_SIZE   (128 * 1024)  /* 128KB - 声音分类器 */
+#define RADAR_ARENA_SIZE   (128 * 1024)  /* 128KB - 雷达分析器 */
+#define FUSION_ARENA_SIZE  (128 * 1024)  /* 128KB - 融合决策器 */
 
 /* 模型数据 (外部声明) */
 extern const unsigned char g_sound_model_data[];
@@ -30,10 +38,20 @@ extern const unsigned int g_radar_model_len;
 extern const unsigned char g_fusion_model_data[];
 extern const unsigned int g_fusion_model_len;
 
-/* Tensor Arena */
-static uint8_t tensor_arena[TENSOR_ARENA_SIZE];
+/* 
+ * 三个独立的 Tensor Arena
+ * 在 PSRAM 中分配，避免内存踩踏
+ */
+static uint8_t *sound_arena = nullptr;
+static uint8_t *radar_arena = nullptr;
+static uint8_t *fusion_arena = nullptr;
 
-/* TFLM 解释器 */
+/* Arena 地址信息（供测试验证） */
+static uintptr_t g_sound_arena_start, g_sound_arena_end;
+static uintptr_t g_radar_arena_start, g_radar_arena_end;
+static uintptr_t g_fusion_arena_start, g_fusion_arena_end;
+
+/* TFLM 解释器（三个独立实例） */
 static tflite::MicroInterpreter *sound_interpreter = nullptr;
 static tflite::MicroInterpreter *radar_interpreter = nullptr;
 static tflite::MicroInterpreter *fusion_interpreter = nullptr;
@@ -59,11 +77,12 @@ static multimodal_config_t config = {
 };
 
 /**
- * @brief 初始化单个模型
+ * @brief 初始化单个模型（使用独立 Arena）
  */
 static int init_model(const unsigned char *model_data, size_t model_len,
                       tflite::MicroInterpreter **interpreter,
                       float **input_ptr, float **output_ptr,
+                      uint8_t *arena, size_t arena_size,
                       int input_size, int output_size)
 {
     /* 加载模型 */
@@ -73,13 +92,13 @@ static int init_model(const unsigned char *model_data, size_t model_len,
         return -EINVAL;
     }
     
-    /* 创建操作解析器 */
-    static tflite::AllOpsResolver resolver;
+    /* 创建操作解析器（每个模型独立） */
+    tflite::AllOpsResolver *resolver = new tflite::AllOpsResolver();
     
-    /* 创建解释器 */
-    static tflite::ErrorReporter *error_reporter = nullptr;
+    /* 创建解释器（使用独立 Arena） */
+    tflite::ErrorReporter *error_reporter = nullptr;
     *interpreter = new tflite::MicroInterpreter(
-        model, resolver, tensor_arena, TENSOR_ARENA_SIZE, error_reporter);
+        model, *resolver, arena, arena_size, error_reporter);
     
     /* 分配张量 */
     TfLiteStatus status = (*interpreter)->AllocateTensors();
@@ -92,7 +111,8 @@ static int init_model(const unsigned char *model_data, size_t model_len,
     *input_ptr = (*interpreter)->input(0)->data.f;
     *output_ptr = (*interpreter)->output(0)->data.f;
     
-    LOG_INF("Model initialized, input_size=%d, output_size=%d", input_size, output_size);
+    LOG_INF("Model initialized, input_size=%d, output_size=%d, arena=%p", 
+            input_size, output_size, (void*)arena);
     return 0;
 }
 
@@ -101,10 +121,37 @@ int multimodal_init(void)
     /* 初始化 TFLite */
     tflite::InitializeTarget();
     
+    /* 
+     * 在 PSRAM 中分配三个独立 Arena
+     * 使用 heap_caps_malloc 确保 PSRAM 分配
+     */
+    sound_arena = (uint8_t*)heap_caps_malloc(SOUND_ARENA_SIZE, MALLOC_CAP_SPIRAM);
+    radar_arena = (uint8_t*)heap_caps_malloc(RADAR_ARENA_SIZE, MALLOC_CAP_SPIRAM);
+    fusion_arena = (uint8_t*)heap_caps_malloc(FUSION_ARENA_SIZE, MALLOC_CAP_SPIRAM);
+    
+    if (!sound_arena || !radar_arena || !fusion_arena) {
+        LOG_ERR("Failed to allocate Tensor Arenas in PSRAM");
+        return -ENOMEM;
+    }
+    
+    /* 记录 Arena 地址（供测试验证） */
+    g_sound_arena_start = (uintptr_t)sound_arena;
+    g_sound_arena_end = (uintptr_t)sound_arena + SOUND_ARENA_SIZE;
+    g_radar_arena_start = (uintptr_t)radar_arena;
+    g_radar_arena_end = (uintptr_t)radar_arena + RADAR_ARENA_SIZE;
+    g_fusion_arena_start = (uintptr_t)fusion_arena;
+    g_fusion_arena_end = (uintptr_t)fusion_arena + FUSION_ARENA_SIZE;
+    
+    LOG_INF("Arena allocated: sound=%p-%p, radar=%p-%p, fusion=%p-%p",
+            (void*)g_sound_arena_start, (void*)g_sound_arena_end,
+            (void*)g_radar_arena_start, (void*)g_radar_arena_end,
+            (void*)g_fusion_arena_start, (void*)g_fusion_arena_end);
+    
     /* 初始化声音分类模型 */
     if (config.sound_enabled) {
         int ret = init_model(g_sound_model_data, g_sound_model_len,
                              &sound_interpreter, &sound_input, &sound_output,
+                             sound_arena, SOUND_ARENA_SIZE,
                              SOUND_MODEL_INPUT_SIZE, SOUND_MODEL_OUTPUT_SIZE);
         if (ret < 0) {
             LOG_ERR("Sound model init failed");
@@ -116,6 +163,7 @@ int multimodal_init(void)
     if (config.radar_enabled) {
         int ret = init_model(g_radar_model_data, g_radar_model_len,
                              &radar_interpreter, &radar_input, &radar_output,
+                             radar_arena, RADAR_ARENA_SIZE,
                              RADAR_MODEL_INPUT_SIZE, RADAR_MODEL_OUTPUT_SIZE);
         if (ret < 0) {
             LOG_ERR("Radar model init failed");
@@ -127,6 +175,7 @@ int multimodal_init(void)
     if (config.fusion_enabled) {
         int ret = init_model(g_fusion_model_data, g_fusion_model_len,
                              &fusion_interpreter, &fusion_input, &fusion_output,
+                             fusion_arena, FUSION_ARENA_SIZE,
                              FUSION_MODEL_INPUT_SIZE, FUSION_MODEL_OUTPUT_SIZE);
         if (ret < 0) {
             LOG_ERR("Fusion model init failed");
@@ -134,7 +183,7 @@ int multimodal_init(void)
         }
     }
     
-    LOG_INF("Multimodal inference engine initialized");
+    LOG_INF("Multimodal inference engine initialized (3 independent Arenas)");
     return 0;
 }
 
@@ -294,4 +343,17 @@ void multimodal_get_stats(uint32_t *avg_time_us, uint32_t *total_count)
         *avg_time_us = 0;
     }
     *total_count = inference_count;
+}
+
+int multimodal_get_arena_info(uintptr_t *sound_start, uintptr_t *sound_end,
+                               uintptr_t *radar_start, uintptr_t *radar_end,
+                               uintptr_t *fusion_start, uintptr_t *fusion_end)
+{
+    *sound_start = g_sound_arena_start;
+    *sound_end = g_sound_arena_end;
+    *radar_start = g_radar_arena_start;
+    *radar_end = g_radar_arena_end;
+    *fusion_start = g_fusion_arena_start;
+    *fusion_end = g_fusion_arena_end;
+    return 0;
 }

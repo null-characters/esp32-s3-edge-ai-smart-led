@@ -268,10 +268,13 @@ void ld2410_get_history_stats(float *variance, float *period, float *trend)
     if (n >= 10) {
         float recent = 0, older = 0;
         for (int i = 0; i < 5; i++) {
-            recent += history_buffer.history[history_buffer.head - 1 - i].energy_norm;
+            /* 安全索引：使用 (head - 1 - i + RADAR_HISTORY_SIZE) % RADAR_HISTORY_SIZE */
+            int idx = (history_buffer.head - 1 - i + RADAR_HISTORY_SIZE) % RADAR_HISTORY_SIZE;
+            recent += history_buffer.history[idx].energy_norm;
         }
         for (int i = 5; i < 10; i++) {
-            older += history_buffer.history[history_buffer.head - 1 - i].energy_norm;
+            int idx = (history_buffer.head - 1 - i + RADAR_HISTORY_SIZE) % RADAR_HISTORY_SIZE;
+            older += history_buffer.history[idx].energy_norm;
         }
         *trend = (recent - older) / 5;
     } else {

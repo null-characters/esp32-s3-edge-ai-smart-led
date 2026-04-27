@@ -104,8 +104,10 @@ int inmp441_init(void)
     /* 初始化 VAD */
     vad_state.active = false;
     vad_state.energy_threshold = VAD_ENERGY_THRESHOLD;
+    vad_state.zcr_threshold = VAD_ZCR_THRESHOLD;
     vad_state.last_active_time = 0;
     vad_state.noise_floor = 0.001f;
+    vad_state.current_zcr = 0;
     
     LOG_INF("INMP441 microphone driver initialized");
     return 0;
@@ -195,9 +197,29 @@ float inmp441_calc_rms(const int16_t *samples, int num_samples)
     return sqrtf(sum_sq / num_samples);
 }
 
+float inmp441_calc_zcr(const int16_t *samples, int num_samples)
+{
+    if (num_samples <= 1) {
+        return 0;
+    }
+    
+    int crossings = 0;
+    for (int i = 1; i < num_samples; i++) {
+        /* 检测符号变化 */
+        if ((samples[i] >= 0 && samples[i-1] < 0) ||
+            (samples[i] < 0 && samples[i-1] >= 0)) {
+            crossings++;
+        }
+    }
+    
+    return (float)crossings / (num_samples - 1);
+}
+
 bool inmp441_vad_detect(const audio_frame_t *frame)
 {
     float energy = frame->rms_energy;
+    float zcr = inmp441_calc_zcr(frame->samples, frame->num_samples);
+    vad_state.current_zcr = zcr;
     uint32_t now = k_uptime_get();
     
     /* 更新噪声底估计 */
@@ -212,8 +234,15 @@ bool inmp441_vad_detect(const audio_frame_t *frame)
         threshold = VAD_ENERGY_THRESHOLD;
     }
     
-    /* 能量检测 */
-    if (energy > threshold) {
+    /* 
+     * 组合检测：能量 OR 过零率
+     * - 能量高：有声音
+     * - 过零率高：周期信号（如键盘敲击）
+     */
+    bool energy_trigger = (energy > threshold);
+    bool zcr_trigger = (zcr > VAD_ZCR_THRESHOLD);
+    
+    if (energy_trigger || zcr_trigger) {
         vad_state.active = true;
         vad_state.last_active_time = now;
         return true;

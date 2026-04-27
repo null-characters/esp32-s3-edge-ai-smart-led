@@ -143,4 +143,18 @@ void multimodal_get_config(multimodal_config_t *config);
  */
 void multimodal_get_stats(uint32_t *avg_time_us, uint32_t *total_count);
 
+/**
+ * @brief 获取 Tensor Arena 信息（供测试验证）
+ * @param sound_start 声音模型 Arena 起始地址
+ * @param sound_end 声音模型 Arena 结束地址
+ * @param radar_start 雷达模型 Arena 起始地址
+ * @param radar_end 雷达模型 Arena 结束地址
+ * @param fusion_start 融合模型 Arena 起始地址
+ * @param fusion_end 融合模型 Arena 结束地址
+ * @return 0 成功
+ */
+int multimodal_get_arena_info(uintptr_t *sound_start, uintptr_t *sound_end,
+                               uintptr_t *radar_start, uintptr_t *radar_end,
+                               uintptr_t *fusion_start, uintptr_t *fusion_end);
+
 #endif /* MULTIMODAL_INFER_H */

@@ -35,6 +35,7 @@
 
 /* VAD 配置 */
 #define VAD_ENERGY_THRESHOLD    0.01f   /* RMS 能量阈值 */
+#define VAD_ZCR_THRESHOLD       0.3f    /* 过零率阈值 */
 #define VAD_HANGOVER_MS         500     /* 拖尾时间 */
 
 /* 音频帧数据 */
@@ -58,9 +59,11 @@ typedef struct {
 /* VAD 状态 */
 typedef struct {
     bool active;                           /* 当前状态 */
-    float energy_threshold;                /* 自适应阈值 */
+    float energy_threshold;                /* 能量阈值 */
+    float zcr_threshold;                   /* 过零率阈值 */
     uint32_t last_active_time;             /* 最后激活时间 */
     float noise_floor;                     /* 噪声底 */
+    float current_zcr;                     /* 当前过零率 */
 } vad_state_t;
 
 /**
@@ -98,6 +101,14 @@ float inmp441_calc_rms(const int16_t *samples, int num_samples);
  * @return true 语音活动
  */
 bool inmp441_vad_detect(const audio_frame_t *frame);
+
+/**
+ * @brief 计算过零率
+ * @param samples 采样数据
+ * @param num_samples 采样点数
+ * @return 过零率 [0, 1]
+ */
+float inmp441_calc_zcr(const int16_t *samples, int num_samples);
 
 /**
  * @brief 获取 VAD 状态
