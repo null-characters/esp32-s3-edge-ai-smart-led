@@ -55,14 +55,16 @@ def count_params(model):
     return model.count_params()
 
 
-def run_ablation_experiment(X, Y, configs):
+def run_ablation_experiment(X, Y, Y_raw, configs):
     """
     运行消融实验
-    
+
     Args:
-        X, Y: 训练数据
+        X: 输入特征
+        Y: 归一化输出标签 [0, 1]
+        Y_raw: 原始输出值（色温 K，亮度 %）
         configs: 模型配置列表，如 [[32, 16], [16, 8], [8]]
-    
+
     Returns:
         实验结果列表
     """
@@ -76,16 +78,16 @@ def run_ablation_experiment(X, Y, configs):
         # 构建模型
         model = build_small_model(config)
         n_params = count_params(model)
-        
-        # 训练
-        model, y_mean, y_std = train_model(model, X, Y, epochs=150)
-        
-        # 量化
-        tflite_float, tflite_int8 = quantize_model(model, X, y_mean, y_std)
-        
-        # 验证
+
+        # P1: 训练（数据已 Min-Max 归一化，无需 Z-Score）
+        model = train_model(model, X, Y, epochs=150)
+
+        # P1: 量化（不再需要 y_mean, y_std）
+        tflite_float, tflite_int8 = quantize_model(model, X)
+
+        # P1: 验证（需要 Y_raw 计算真实误差）
         mae_float_ct, mae_float_br, mae_int8_ct, mae_int8_br = validate_model(
-            tflite_float, tflite_int8, X, Y, y_mean, y_std
+            tflite_float, tflite_int8, X, Y, Y_raw
         )
         
         results.append({
@@ -163,7 +165,9 @@ def main():
     
     print(f"加载数据: {npz_path}")
     data = np.load(npz_path)
-    X, Y = data['X'], data['Y']
+    X = data['X']
+    Y = data['Y']  # P1: 归一化值 [0, 1]
+    Y_raw = data['Y_raw'] if 'Y_raw' in data else Y  # P1: 原始值
     print(f"数据: {X.shape[0]} 样本, {X.shape[1]} 特征")
     
     # 定义实验配置
@@ -172,12 +176,11 @@ def main():
         [16, 8],   # 缩小一半
         [8],       # 极简版
         [16],      # 单隐藏层
-        [12, 6],   # 更小
     ]
-    
-    # 运行实验
-    results = run_ablation_experiment(X, Y, configs)
-    
+
+    # P1: 运行实验（传入 Y_raw）
+    results = run_ablation_experiment(X, Y, Y_raw, configs)
+
     # 打印对比表
     print_comparison_table(results)
     

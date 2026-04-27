@@ -421,6 +421,295 @@ converter_int8.inference_output_type = tf.int8  # ← 关键：输出也INT8
 
 ---
 
+## 架构师深度反馈与工程解法
+
+> 本节记录架构师对三个致命隐患的深度技术反馈，以及对应的工程解法。
+
+### 隐患一：C 端 Debounce 状态机设计技巧
+
+#### 问题回顾
+
+PIR 传感器存在"短视"和抖动问题：用户静坐几分钟后 PIR 输出 0，导致 MLP 立即关灯；用户挥手后 PIR 输出 1，MLP 又立即开灯——灯光疯狂闪烁。
+
+#### 核心设计原则：非对称滤波
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    防抖状态机设计原则                           │
+│                                                               │
+│  上升沿（0→1，有人进入）                                        │
+│  └─► 延迟：0ms 或极小                                          │
+│  └─► 原因：用户推开门，灯必须在 50ms 内亮起                      │
+│  └─► 否则体验极差                                              │
+│                                                               │
+│  下降沿（1→0，人离开或静坐）                                     │
+│  └─► 延迟：几分钟到十几分钟                                      │
+│  └─► 原因：用户可能只是静坐看屏幕                                │
+│  └─► 给予足够的"信任窗口"                                      │
+│                                                               │
+│  本质：非对称滤波器                                             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### 推荐实现方案
+
+```c
+/* ai_infer.c - 稳定 presence 状态机 */
+
+#define RISE_IMMEDIATE_MS    0      /* 上升沿：立即响应 */
+#define FALL_HOLD_TIME_MS    300000 /* 下降沿：5分钟滞后 */
+
+static struct {
+    bool stable_presence;           /* 稳定状态（喂给 AI） */
+    bool last_raw_presence;         /* 上一次原始状态 */
+    int64_t falling_edge_ts;         /* 下降沿时间戳 */
+} presence_sm;
+
+static bool update_stable_presence(bool raw_presence, int64_t now_ms)
+{
+    /* 上升沿：立即响应 */
+    if (raw_presence && !presence_sm.last_raw_presence) {
+        presence_sm.stable_presence = true;
+        presence_sm.falling_edge_ts = 0;
+    }
+    /* 下降沿：开始计时 */
+    else if (!raw_presence && presence_sm.last_raw_presence) {
+        presence_sm.falling_edge_ts = now_ms;
+    }
+    /* 持续低电平：检查滞后时间 */
+    else if (!raw_presence && !presence_sm.stable_presence) {
+        if (presence_sm.falling_edge_ts > 0) {
+            int64_t elapsed = now_ms - presence_sm.falling_edge_ts;
+            if (elapsed >= FALL_HOLD_TIME_MS) {
+                presence_sm.stable_presence = false;
+            }
+        }
+    }
+
+    presence_sm.last_raw_presence = raw_presence;
+    return presence_sm.stable_presence;
+}
+```
+
+#### 设计要点
+
+| 场景 | 原始 PIR | 稳定 presence | AI 行为 |
+|------|----------|---------------|---------|
+| 用户进门 | 0→1 | 立即变 1 | 立即开灯 |
+| 用户静坐 3 分钟 | 1→0→0... | 保持 1 | 灯不灭 |
+| 用户离开 5 分钟 | 0→0→0... | 延迟变 0 | 5 分钟后关灯 |
+| 用户中途挥手 | 0→1 | 立即变 1 | 重置计时器 |
+
+---
+
+### 隐患二：Sigmoid 激活与 Min-Max 归一化的数学陷阱
+
+#### 问题回顾
+
+`linear` 激活函数输出范围 $(-\infty, +\infty)$，Z-Score 归一化导致量化精度损失。改用 `sigmoid` + Min-Max 归一化时，存在梯度消失问题。
+
+#### 梯度消失现象
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    Sigmoid 函数特性                            │
+│                                                               │
+│  σ(x) = 1 / (1 + e^(-x))                                      │
+│                                                               │
+│  输出范围：(0, 1)                                              │
+│                                                               │
+│  梯度（导数）：                                                 │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │         ▲ 梯度                                           │ │
+│  │    0.25 │      ╱╲                                        │ │
+│  │         │     ╱  ╲                                       │ │
+│  │         │    ╱    ╲                                       │ │
+│  │         │   ╱      ╲                                      │ │
+│  │    0    │──╱────────╲──► x                               │ │
+│  │         │ -4  -2  0  2  4                                │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  问题：x 接近 ±∞ 时，梯度趋近于 0                               │
+│       模型很难精确拟合到 0.000 或 1.000                         │
+│       可能输出 0.01 或 0.99                                    │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### 工程解法：死区（Deadzone）处理
+
+```c
+/* ai_infer.c - 反归一化带死区 */
+
+#define DEADZONE_LOW  0.02f  /* 2% 以下视为 0 */
+#define DEADZONE_HIGH 0.98f  /* 98% 以上视为 1 */
+
+static void denormalize_output(const float *output, ai_output_t *result)
+{
+    /* 亮度：[0, 1] → [0%, 100%] */
+    float brightness_norm = output[1];
+    if (brightness_norm < DEADZONE_LOW) {
+        result->brightness = 0;
+    } else if (brightness_norm > DEADZONE_HIGH) {
+        result->brightness = 100;
+    } else {
+        result->brightness = (uint8_t)(brightness_norm * 100.0f);
+    }
+
+    /* 色温：[0, 1] → [2700K, 6500K] */
+    float color_temp_norm = output[0];
+    if (color_temp_norm < DEADZONE_LOW) {
+        result->color_temp = COLOR_TEMP_MIN;  /* 2700K */
+    } else if (color_temp_norm > DEADZONE_HIGH) {
+        result->color_temp = COLOR_TEMP_MAX;  /* 6500K */
+    } else {
+        result->color_temp = (uint16_t)(2700 + color_temp_norm * 3800);
+    }
+}
+```
+
+#### 数学保证
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    输出边界数学保证                              │
+│                                                               │
+│  Sigmoid 输出：σ(x) ∈ (0, 1)                                  │
+│                                                               │
+│  亮度计算：                                                    │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │ σ(x) < 0.02  → brightness = 0%                           │ │
+│  │ σ(x) > 0.98  → brightness = 100%                        │ │
+│  │ 其他          → brightness = σ(x) × 100%                │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  结论：无论模型输出如何异常，亮度永远在 [0%, 100%]               │
+│       PWM 驱动永远不会收到越界指令                              │
+└───────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 隐患三：数据飞轮（Data Flywheel）架构设计
+
+#### 问题回顾
+
+当前用 15 行 Python if-else 规则生成训练数据，模型只是在"模仿规则"。真正的 AI 应该学习用户偏好。
+
+#### 影子模式（Shadow Mode）机制
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    影子模式运转机制                              │
+│                                                               │
+│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐   │
+│  │ 传感器数据   │ ───► │  AI 推理    │ ───► │ 预测值 60%  │   │
+│  └─────────────┘      └─────────────┘      └─────────────┘   │
+│         │                                         │          │
+│         │                                         │          │
+│         ▼                                         ▼          │
+│  ┌─────────────┐                           ┌─────────────┐   │
+│  │ 物理旋钮    │ ───► 用户实际设定 80% ───► │ 偏差 20%    │   │
+│  └─────────────┘                           └─────────────┘   │
+│                                                   │          │
+│                                                   ▼          │
+│                                          ┌─────────────┐    │
+│                                          │ 触发数据采集 │    │
+│                                          └─────────────┘    │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### 高价值数据采集策略
+
+```c
+/* ai_infer.c - 影子模式数据采集 */
+
+#define DEVIATION_THRESHOLD 15  /* 偏差阈值：15% */
+
+typedef struct {
+    float features[7];   /* 输入特征 */
+    float user_value;    /* 用户实际设定 */
+    uint32_t timestamp;
+} hard_example_t;
+
+static void check_and_record_deviation(
+    const ai_features_t *features,
+    const ai_output_t *ai_pred,
+    const ai_output_t *user_actual)
+{
+    /* 计算偏差 */
+    int brightness_diff = abs((int)ai_pred->brightness - (int)user_actual->brightness);
+
+    /* 偏差超过阈值，记录为高价值样本 */
+    if (brightness_diff >= DEVIATION_THRESHOLD) {
+        hard_example_t example = {
+            .features = {
+                features->hour_sin,
+                features->hour_cos,
+                features->sunset_proximity,
+                features->sunrise_hour_norm,
+                features->sunset_hour_norm,
+                features->weather,
+                features->presence
+            },
+            .user_value = (float)user_actual->brightness,
+            .timestamp = k_uptime_get_32()
+        };
+
+        /* 写入 Flash 日志分区或发送到局域网服务器 */
+        hard_example_log_append(&example);
+
+        LOG_INF("Hard example recorded: AI=%d%%, User=%d%%, diff=%d%%",
+                ai_pred->brightness, user_actual->brightness, brightness_diff);
+    }
+}
+```
+
+#### 数据飞轮完整流程
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    数据飞轮（Data Flywheel）                     │
+│                                                               │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐│
+│  │ 影子模式  │ ─► │ 偏差检测  │ ─► │ 纠错数据  │ ─► │ 云端聚合  ││
+│  │ 运行     │    │ > 15%    │    │ 采集     │    │          │ │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘│
+│                                                       │      │
+│                                                       ▼      │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐│
+│  │ OTA 下发  │ ◄─ │ INT8量化  │ ◄─ │ 微调训练  │ ◄─ │ 数据混合  ││
+│  │ 新模型    │    │          │    │          │    │          │ │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘│
+│                                                               │
+│  数据来源：                                                     │
+│  - 原始合成数据：15000 条（覆盖主要场景）                         │
+│  - 用户纠错数据：几百条（高价值偏好）                              │
+│  - 混合比例：合成数据 : 纠错数据 ≈ 10:1                          │
+│                                                               │
+│  这才是真正的边缘 AI 进化！                                      │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### Roadmap 规划
+
+| 阶段 | 功能 | 数据来源 | 差异化 |
+|------|------|----------|--------|
+| Phase 1 (MVP) | 规则模仿 | 合成数据 | 无 |
+| Phase 2 | 用户偏好学习 | 影子模式采集 | 有 |
+| Phase 3 | 群体智慧 | 云端聚合 | 有 |
+
+---
+
+### 修复优先级更新
+
+| 优先级 | 隐患 | 修复方案 | 影响范围 | 状态 |
+|--------|------|----------|----------|------|
+| P0 | 传感器抖动 | C 端非对称 Debounce 状态机 | `ai_infer.c` | 待实施 |
+| P1 | 输出越界 | Sigmoid + Min-Max + 死区 | `train_model.py` + `ai_infer.c` | 待实施 |
+| P2 | 规则模仿 | 影子模式数据飞轮 | Roadmap 项目 | 规划中 |
+
+---
+
 ## 常见问题
 
 ### Q1: TensorFlow 导入时段错误 (exit code 139)
@@ -495,4 +784,4 @@ prj/include/
 *维护者：null-characters*
 *创建日期：2026-04-25*
 *更新日期：2026-04-27*
-*版本：v1.2*
+*版本：v1.3*

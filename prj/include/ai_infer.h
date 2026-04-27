@@ -138,4 +138,33 @@ void ai_infer_thread_stop(void);
 /* 推理周期 */
 #define AI_INFERENCE_INTERVAL_MS  30000  /* 30秒 */
 
+/* ================================================================
+ * P0: 非对称 Debounce 状态机参数
+ * ================================================================ */
+
+/* 上升沿延迟：0ms（开灯要快） */
+#define PRESENCE_RISE_DELAY_MS      0
+
+/* 下降沿延迟：5分钟（关灯要慢，用户可能只是静坐） */
+#define PRESENCE_FALL_DELAY_MS      300000
+
+/**
+ * @brief 更新稳定 presence 状态
+ * @param raw_presence 原始 PIR 状态 (0/1)
+ * @param now_ms 当前时间戳 (毫秒)
+ * @return 稳定的 presence 状态
+ */
+float ai_update_stable_presence(bool raw_presence, int64_t now_ms);
+
+/**
+ * @brief 获取当前稳定 presence 状态
+ * @return 稳定状态 (0.0 或 1.0)
+ */
+float ai_get_stable_presence(void);
+
+/**
+ * @brief 重置 presence 状态机
+ */
+void ai_presence_reset(void);
+
 #endif /* AI_INFER_H */

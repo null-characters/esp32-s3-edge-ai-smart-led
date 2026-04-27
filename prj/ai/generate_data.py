@@ -4,6 +4,9 @@ Phase 3: AI-002
 
 基于领域知识规则生成训练数据，让MLP模型学习这些规则。
 规则来源: Phase 1 规则引擎 + Phase 2 环境感知调光算法
+
+P1 改造：输出标签使用 Min-Max 归一化到 [0, 1]
+- 配合 Sigmoid 激活函数，数学保证输出在物理边界内
 """
 
 import numpy as np
@@ -34,6 +37,26 @@ COLOR_TEMP_MIN = 2700
 COLOR_TEMP_MAX = 6500
 BRIGHTNESS_MIN = 0
 BRIGHTNESS_MAX = 100
+
+# P1: Min-Max 归一化参数（供 C 端反归一化使用）
+COLOR_TEMP_RANGE = COLOR_TEMP_MAX - COLOR_TEMP_MIN  # 3800K
+BRIGHTNESS_RANGE = BRIGHTNESS_MAX - BRIGHTNESS_MIN  # 100%
+
+
+def normalize_output(color_temp: float, brightness: float) -> tuple:
+    """
+    P1: Min-Max 归一化输出标签到 [0, 1]
+    
+    Args:
+        color_temp: 色温 (2700-6500K)
+        brightness: 亮度 (0-100%)
+    
+    Returns:
+        (color_temp_norm, brightness_norm) ∈ [0, 1]
+    """
+    color_temp_norm = (color_temp - COLOR_TEMP_MIN) / COLOR_TEMP_RANGE
+    brightness_norm = (brightness - BRIGHTNESS_MIN) / BRIGHTNESS_RANGE
+    return color_temp_norm, brightness_norm
 
 
 def calculate_sunset_proximity(hour: float, sunset_hour: float) -> float:
@@ -110,6 +133,9 @@ def generate_sample(rng: np.random.Generator) -> dict:
     color_temp = np.clip(color_temp, COLOR_TEMP_MIN, COLOR_TEMP_MAX)
     brightness = np.clip(brightness, BRIGHTNESS_MIN, BRIGHTNESS_MAX)
 
+    # P1: Min-Max 归一化输出
+    color_temp_norm, brightness_norm = normalize_output(color_temp, brightness)
+
     return {
         'hour_sin': hour_sin,
         'hour_cos': hour_cos,
@@ -118,8 +144,12 @@ def generate_sample(rng: np.random.Generator) -> dict:
         'sunset_hour_norm': sunset_hour_norm,
         'weather': weather,
         'presence': presence,
+        # 原始值（用于 CSV 人类可读）
         'color_temp': color_temp,
-        'brightness': brightness
+        'brightness': brightness,
+        # P1: 归一化值（用于训练）
+        'color_temp_norm': color_temp_norm,
+        'brightness_norm': brightness_norm
     }
 
 
@@ -145,9 +175,10 @@ def generate_training_data(n_samples: int = N_SAMPLES,
             sample['weather'],
             sample['presence']
         ])
+        # P1: Y 使用归一化值
         Y_list.append([
-            sample['color_temp'],
-            sample['brightness']
+            sample['color_temp_norm'],
+            sample['brightness_norm']
         ])
 
     X = np.array(X_list, dtype=np.float32)
@@ -156,26 +187,28 @@ def generate_training_data(n_samples: int = N_SAMPLES,
     return X, Y
 
 
-def save_to_csv(X: np.ndarray, Y: np.ndarray, filepath: str):
+def save_to_csv(X: np.ndarray, Y: np.ndarray, Y_raw: np.ndarray, filepath: str):
     """
-    保存训练数据为CSV文件
+    保存训练数据为CSV文件（包含原始值和归一化值）
     """
     feature_names = ['hour_sin', 'hour_cos', 'sunset_proximity',
                      'sunrise_hour_norm', 'sunset_hour_norm',
                      'weather', 'presence']
-    output_names = ['color_temp', 'brightness']
+    # P1: CSV 包含原始值和归一化值
+    output_names = ['color_temp', 'brightness',
+                    'color_temp_norm', 'brightness_norm']
 
     with open(filepath, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(feature_names + output_names)
         for i in range(len(X)):
-            row = list(X[i]) + list(Y[i])
+            row = list(X[i]) + list(Y_raw[i]) + list(Y[i])
             writer.writerow(row)
 
     print(f"Saved {len(X)} samples to {filepath}")
 
 
-def print_statistics(X: np.ndarray, Y: np.ndarray):
+def print_statistics(X: np.ndarray, Y: np.ndarray, Y_raw: np.ndarray):
     """
     打印数据集统计信息
     """
@@ -191,33 +224,83 @@ def print_statistics(X: np.ndarray, Y: np.ndarray):
         print(f"  {name:20s}: min={X[:, i].min():.4f}, "
               f"max={X[:, i].max():.4f}, mean={X[:, i].mean():.4f}")
 
-    print("\nOutput targets:")
-    print(f"  color_temp  : min={Y[:, 0].min():.0f}, "
-          f"max={Y[:, 0].max():.0f}, mean={Y[:, 0].mean():.1f}")
-    print(f"  brightness  : min={Y[:, 1].min():.0f}, "
-          f"max={Y[:, 1].max():.0f}, mean={Y[:, 1].mean():.1f}")
+    print("\nOutput targets (normalized [0, 1]):")
+    print(f"  color_temp_norm  : min={Y[:, 0].min():.4f}, "
+          f"max={Y[:, 0].max():.4f}, mean={Y[:, 0].mean():.4f}")
+    print(f"  brightness_norm  : min={Y[:, 1].min():.4f}, "
+          f"max={Y[:, 1].max():.4f}, mean={Y[:, 1].mean():.4f}")
+
+    print("\nOutput targets (raw values):")
+    print(f"  color_temp  : min={Y_raw[:, 0].min():.0f}, "
+          f"max={Y_raw[:, 0].max():.0f}, mean={Y_raw[:, 0].mean():.1f}")
+    print(f"  brightness  : min={Y_raw[:, 1].min():.0f}, "
+          f"max={Y_raw[:, 1].max():.0f}, mean={Y_raw[:, 1].mean():.1f}")
 
     # 检查无人样本比例
     presence_mask = X[:, 6] == 1.0
     print(f"\nPresence distribution:")
     print(f"  Present: {presence_mask.sum()} ({presence_mask.mean()*100:.1f}%)")
     print(f"  Absent: {(~presence_mask).sum()} ({(~presence_mask).mean()*100:.1f}%)")
-    print(f"  Absent brightness=0: {(Y[~presence_mask, 1] == 0).sum()}")
+    print(f"  Absent brightness=0: {(Y_raw[~presence_mask, 1] == 0).sum()}")
+
+    # P1: 验证归一化正确性
+    print(f"\nNormalization parameters:")
+    print(f"  COLOR_TEMP: [{COLOR_TEMP_MIN}, {COLOR_TEMP_MAX}] K")
+    print(f"  BRIGHTNESS: [{BRIGHTNESS_MIN}, {BRIGHTNESS_MAX}] %")
+
+
+def generate_training_data_with_raw(n_samples: int = N_SAMPLES,
+                                     seed: int = SEED) -> tuple:
+    """
+    生成训练数据集（包含原始值和归一化值）
+    Returns: (X, Y_norm, Y_raw) numpy arrays
+    """
+    rng = np.random.default_rng(seed)
+
+    X_list = []
+    Y_norm_list = []
+    Y_raw_list = []
+
+    for _ in range(n_samples):
+        sample = generate_sample(rng)
+        X_list.append([
+            sample['hour_sin'],
+            sample['hour_cos'],
+            sample['sunset_proximity'],
+            sample['sunrise_hour_norm'],
+            sample['sunset_hour_norm'],
+            sample['weather'],
+            sample['presence']
+        ])
+        Y_norm_list.append([
+            sample['color_temp_norm'],
+            sample['brightness_norm']
+        ])
+        Y_raw_list.append([
+            sample['color_temp'],
+            sample['brightness']
+        ])
+
+    X = np.array(X_list, dtype=np.float32)
+    Y_norm = np.array(Y_norm_list, dtype=np.float32)
+    Y_raw = np.array(Y_raw_list, dtype=np.float32)
+
+    return X, Y_norm, Y_raw
 
 
 if __name__ == '__main__':
-    # 生成数据
-    X, Y = generate_training_data()
+    # 生成数据（包含原始值和归一化值）
+    X, Y_norm, Y_raw = generate_training_data_with_raw()
 
     # 打印统计
-    print_statistics(X, Y)
+    print_statistics(X, Y_norm, Y_raw)
 
     # 保存CSV
     output_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(output_dir, 'training_data.csv')
-    save_to_csv(X, Y, csv_path)
+    save_to_csv(X, Y_norm, Y_raw, csv_path)
 
     # 保存numpy格式 (更快加载)
     np.savez(os.path.join(output_dir, 'training_data.npz'),
-             X=X, Y=Y)
+             X=X, Y=Y_norm, Y_raw=Y_raw)
     print(f"Saved numpy format to training_data.npz")
