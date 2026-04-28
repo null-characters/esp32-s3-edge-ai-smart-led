@@ -397,7 +397,7 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| ESP-IDF 项目框架 | ✅ 已完成 | ESP-IDF v6.1-dev |
+| ESP-IDF 项目框架 | ✅ 已完成 | ESP-IDF v6.1 |
 | ESP-SR 集成 | ✅ 已完成 | WakeNet (wn_xiaobaitong) |
 | LD2410 雷达驱动 | ✅ 已完成 | UART 驱动、数据解析、特征提取 |
 | MFCC 特征提取 | ✅ 已完成 | ESP-DSP 加速，40 维特征 |
@@ -406,11 +406,12 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 | AEC 回声消除 | ✅ 已完成 | ESP-SR esp_aec.h API |
 | TTS 语音合成 | ✅ 已完成 | ESP-SR 中文 TTS (xiaole) |
 | VAD 语音检测 | ✅ 已完成 | ESP-SR esp_vad.h API |
-| 音频动态路由 | ✅ 已完成 | VAD 驱动的 ESP-SR/TFLM 路由 |
+| 音频动态路由 | ✅ 已完成 | VAD 驱��的 ESP-SR/TFLM 路由 |
 | 命令处理器 | ✅ 已完成 | 50+ 条命令词 + TTS 回复 |
 | DAC 音频驱动 | ✅ 已完成 | I2S DAC 输出驱动 |
-| Unity 单元测试 | ✅ 已完成 | 40+ 个测试用例 |
 | 双轨仲裁机制 | ✅ 已完成 | TTL 租约 + 环境监控 |
+| 线程安全 | ✅ 已完成 | 互斥锁保护、回调死锁预防 |
+| Unity 单元测试 | ✅ 已完成 | 83 个测试组 |
 | 多模态推理迁移 | 🚧 进行中 | 模型加载机制 |
 
 ### 多模态版本 (prj-v2，Zephyr，已归档)
@@ -484,4 +485,5 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 **最后更新**: 2026-04-28
 **ESP-IDF 版本**: v6.1
 **架构版本**: prj-v3 (语音交互版本)
-**测试覆盖**: 40+ Unity 单元测试
+**测试覆盖**: 83 个 Unity 测试组
+**代码质量**: 线程安全、回调死锁预防
