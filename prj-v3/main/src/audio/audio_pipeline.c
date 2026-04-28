@@ -196,13 +196,18 @@ int audio_pipeline_init(void)
     };
     ret = voice_commands_init(&cmd_cfg);
     if (ret != 0) {
-        ESP_LOGW(TAG, "命令词初始化失败: %d (使用默认配置)", ret);
+        ESP_LOGE(TAG, "命令词初始化失败: %d", ret);
+        audio_afe_deinit();
+        return -2;
     }
     
     /* 初始化命令处理器 */
     ret = command_handler_init();
     if (ret != 0) {
-        ESP_LOGW(TAG, "命令处理器初始化失败: %d", ret);
+        ESP_LOGE(TAG, "命令处理器初始化失败: %d", ret);
+        voice_commands_deinit();
+        audio_afe_deinit();
+        return -3;
     }
     
     /* 设置 AFE 回调 */
@@ -225,6 +230,7 @@ void audio_pipeline_deinit(void)
     }
     
     audio_pipeline_stop();
+    voice_commands_deinit();
     audio_afe_deinit();
     
     g_pipe.initialized = false;
@@ -276,6 +282,11 @@ void audio_pipeline_stop(void)
 
 void audio_pipeline_set_event_callback(audio_event_callback_t callback, void *user_data)
 {
+    if (!callback) {
+        g_pipe.event_callback = NULL;
+        g_pipe.user_data = NULL;
+        return;
+    }
     g_pipe.event_callback = callback;
     g_pipe.user_data = user_data;
 }
@@ -299,5 +310,8 @@ int audio_pipeline_set_wake_sensitivity(int sensitivity)
 
 bool audio_pipeline_is_running(void)
 {
+    if (!g_pipe.initialized) {
+        return false;
+    }
     return g_pipe.running;
 }

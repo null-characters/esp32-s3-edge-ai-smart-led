@@ -29,6 +29,7 @@ static uint8_t rx_buf[2][UART_BUF_SIZE];
 static int active_buf = 0;
 static volatile bool data_ready = false;
 static SemaphoreHandle_t data_mutex;
+static bool g_initialized = false;  /**< 初始化状态 */
 
 /* 当前帧数据 */
 static ld2410_raw_data_t current_data;
@@ -131,6 +132,11 @@ static void normalize_features(const ld2410_raw_data_t *raw,
 
 int ld2410_init(void)
 {
+    if (g_initialized) {
+        ESP_LOGW(TAG, "LD2410 already initialized");
+        return 0;
+    }
+    
     /* 配置 UART */
     uart_config_t uart_cfg = {
         .baud_rate = LD2410_UART_BAUD,
@@ -168,7 +174,11 @@ int ld2410_init(void)
     }
     
     /* 启动接收 */
-    uart_read_bytes(LD2410_UART_NUM, rx_buf[0], UART_BUF_SIZE, 100 / portTICK_PERIOD_MS);
+    int bytes_read = uart_read_bytes(LD2410_UART_NUM, rx_buf[0], UART_BUF_SIZE, 
+                                      pdMS_TO_TICKS(100));
+    if (bytes_read < 0) {
+        ESP_LOGW(TAG, "Initial UART read failed, continuing anyway");
+    }
     
     /* 初始化历史缓冲 */
     history_buffer.head = 0;
@@ -180,12 +190,18 @@ int ld2410_init(void)
     memset(velocity_filter, 0, sizeof(velocity_filter));
     memset(energy_filter, 0, sizeof(energy_filter));
     
+    g_initialized = true;
+    
     ESP_LOGI(TAG, "LD2410 radar driver initialized");
     return 0;
 }
 
 int ld2410_read_raw(ld2410_raw_data_t *data)
 {
+    if (!g_initialized) {
+        return -EINVAL;
+    }
+    
     if (!data_ready) {
         return -EAGAIN;
     }
@@ -203,6 +219,10 @@ int ld2410_read_raw(ld2410_raw_data_t *data)
 
 int ld2410_get_features(radar_features_t *features)
 {
+    if (!g_initialized || !features) {
+        return -EINVAL;
+    }
+    
     /* 读取原始数据 */
     ld2410_raw_data_t raw;
     int ret = ld2410_read_raw(&raw);
@@ -227,6 +247,10 @@ int ld2410_get_features(radar_features_t *features)
 
 void ld2410_update_history(const radar_features_t *features)
 {
+    if (!g_initialized || !features) {
+        return;
+    }
+    
     history_buffer.history[history_buffer.head] = *features;
     history_buffer.head = (history_buffer.head + 1) % RADAR_HISTORY_SIZE;
     if (history_buffer.count < RADAR_HISTORY_SIZE) {
@@ -237,7 +261,11 @@ void ld2410_update_history(const radar_features_t *features)
 
 void ld2410_get_history_stats(float *variance, float *period, float *trend)
 {
-    if (history_buffer.count < 2) {
+    if (!variance || !period || !trend) {
+        return;
+    }
+    
+    if (!g_initialized || history_buffer.count < 2) {
         *variance = 0;
         *period = 0;
         *trend = 0;
@@ -279,6 +307,10 @@ void ld2410_get_history_stats(float *variance, float *period, float *trend)
 
 bool ld2410_detect_breathing(void)
 {
+    if (!g_initialized) {
+        return false;
+    }
+    
     if (current_features.motion_period >= 0.1f && 
         current_features.motion_period <= 0.5f &&
         current_features.energy_norm < 0.3f &&
@@ -290,6 +322,10 @@ bool ld2410_detect_breathing(void)
 
 bool ld2410_detect_fan(void)
 {
+    if (!g_initialized) {
+        return false;
+    }
+    
     if (current_features.motion_period >= 0.5f &&
         current_features.energy_norm >= 0.3f &&
         current_features.distance_variance < 0.1f) {

@@ -186,13 +186,50 @@ int wake_word_stop(void)
     return 0;
 }
 
+void wake_word_deinit(void)
+{
+    if (!wake_state.initialized) {
+        return;
+    }
+    
+    /* 停止检测任务 */
+    wake_word_stop();
+    
+    /* 释放音频缓冲区 */
+    if (audio_buf) {
+        free(audio_buf);
+        audio_buf = NULL;
+    }
+    
+    /* 释放 WakeNet 资源 */
+    if (wake_state.model_data && wake_state.wakenet) {
+        wake_state.wakenet->destroy(wake_state.model_data);
+        wake_state.model_data = NULL;
+    }
+    
+    /* 删除事件组 */
+    if (wake_event_group) {
+        vEventGroupDelete(wake_event_group);
+        wake_event_group = NULL;
+    }
+    
+    wake_state.initialized = false;
+    ESP_LOGI(TAG, "Wake word module deinitialized");
+}
+
 bool wake_word_is_awake(void)
 {
+    if (!wake_state.initialized) {
+        return false;
+    }
     return wake_state.awake;
 }
 
 void wake_word_reset(void)
 {
+    if (!wake_state.initialized) {
+        return;
+    }
     wake_state.awake = false;
     xEventGroupClearBits(wake_event_group, WAKE_WORD_BIT);
 }
@@ -207,5 +244,8 @@ void wake_word_set_threshold(float threshold)
 
 float wake_word_get_threshold(void)
 {
+    if (!wake_state.initialized) {
+        return 0.0f;
+    }
     return wake_state.threshold;
 }

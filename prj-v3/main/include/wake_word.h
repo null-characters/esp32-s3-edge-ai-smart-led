@@ -52,6 +52,11 @@ int wake_word_start(void);
 int wake_word_stop(void);
 
 /**
+ * @brief 释放唤醒词模块资源
+ */
+void wake_word_deinit(void);
+
+/**
  * @brief 获取当前唤醒状态
  * @return true 已唤醒, false 未唤醒
  */
