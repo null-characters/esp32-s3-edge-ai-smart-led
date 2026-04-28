@@ -455,11 +455,11 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 2. 新增功能包含单元测试
 3. AI 模型变更需运行 `pytest prj/ai/test_model.py` 或 `pytest prj-v2/ai/test_model.py` 验证
 4. 提交前运行 `idf.py test` 验证嵌入式测试通过
-
+ 
 ---
 
 **维护者**: null-characters
 **创建日期**: 2026-04-24
-**最后更新**: 2026-04-27 23:30
+**最后更新**: 2026-04-28
 **ESP-IDF 版本**: v5.4+
 **架构版本**: prj-v3 (语音交互版本)
