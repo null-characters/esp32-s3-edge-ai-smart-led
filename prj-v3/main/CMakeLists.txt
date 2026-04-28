@@ -9,6 +9,7 @@ idf_component_register(
          "src/radar/ld2410_driver.c"
          "src/audio/mfcc.c"
          "src/audio/audio_afe.c"
+         "src/audio/audio_pipeline.c"
          "src/voice/wake_word.c"
          "src/voice/command_handler.c"
          "src/voice/voice_commands.c"

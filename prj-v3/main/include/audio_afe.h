@@ -65,6 +65,15 @@ typedef struct {
 typedef void (*audio_afe_callback_t)(const audio_afe_result_t *result, void *user_data);
 
 /* ================================================================
+ * 全局默认配置
+ * ================================================================ */
+
+/**
+ * @brief 默认 AFE 配置 (INMP441 单麦克风)
+ */
+extern const audio_afe_config_t audio_afe_default_config;
+
+/* ================================================================
  * API 函数声明
  * ================================================================ */
 
@@ -135,5 +144,35 @@ void audio_afe_multinet_enable(bool enable);
  * @brief 重置 AFE 状态 (唤醒后调用)
  */
 void audio_afe_reset(void);
+
+/**
+ * @brief 启动音频处理任务
+ * @return 0 成功, <0 失败
+ */
+int audio_afe_start(void);
+
+/**
+ * @brief 停止音频处理任务
+ */
+void audio_afe_stop(void);
+
+/**
+ * @brief 设置唤醒词检测阈值
+ * @param threshold 阈值 (0.4 - 0.9999)
+ * @return 0 成功, <0 失败
+ */
+int audio_afe_set_wakenet_threshold(float threshold);
+
+/**
+ * @brief 检查是否正在运行
+ * @return true 正在运行
+ */
+bool audio_afe_is_running(void);
+
+/**
+ * @brief 获取当前配置
+ * @return 配置指针 (只读)
+ */
+const audio_afe_config_t* audio_afe_get_config(void);
 
 #endif /* AUDIO_AFE_H */
