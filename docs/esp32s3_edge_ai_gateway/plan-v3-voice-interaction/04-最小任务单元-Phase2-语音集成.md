@@ -1,15 +1,22 @@
 # 最小任务单元清单 - Phase 2 语音集成
 
 > ESP-SR 语音识别框架集成
+> **拆分为 Phase 2a + Phase 2b，共 2 周**
 
 ---
 
-## T2.1 ESP-SR 组件集成
+## Phase 2a: 纯语音控制 LED（1 周）⭐ 快速验证核心风险
 
-### T2.1.1 添加 ESP-SR 依赖
+> 目标：跳过多模态，直接验证语音命令 → LED 响应的端到端流程
+
+---
+
+### T2a.1 ESP-SR 基础集成
+
+#### T2a.1.1 添加 ESP-SR 依赖
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.1.1 |
+| **任务ID** | T2a.1.1 |
 | **任务名称** | 添加 ESP-SR 组件依赖 |
 | **预估工时** | 2h |
 | **前置任务** | Phase 1 完成 |
@@ -26,13 +33,13 @@ idf.py add-dependency "espressif/esp-sr^1.5.0"
 
 ---
 
-### T2.1.2 配置 WakeNet 模型
+#### T2a.1.2 配置 WakeNet 模型
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.1.2 |
+| **任务ID** | T2a.1.2 |
 | **任务名称** | 配置唤醒词模型 |
 | **预估工时** | 4h |
-| **前置任务** | T2.1.1 |
+| **前置任务** | T2a.1.1 |
 
 **配置项**：
 ```ini
@@ -48,198 +55,182 @@ CONFIG_ESP_SR_WAKENET_THRESHOLD=0.5
 
 ---
 
-### T2.1.3 配置 MultiNet 模型
+#### T2a.1.3 配置 MultiNet 基础命令
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.1.3 |
-| **任务名称** | 配置命令词模型 |
+| **任务ID** | T2a.1.3 |
+| **任务名称** | 配置基础命令词 |
 | **预估工时** | 4h |
-| **前置任务** | T2.1.2 |
+| **前置任务** | T2a.1.2 |
 
-**命令词配置**：
+**基础命令配置**：
 ```c
-// command_def.h
+// voice_led_control.h
 typedef enum {
-    CMD_SCENE_FOCUS,      // "打开专注模式"
-    CMD_SCENE_MEETING,    // "打开会议模式"
-    CMD_SCENE_PRESENT,    // "打开演示模式"
-    CMD_SCENE_RELAX,      // "打开休息模式"
-    CMD_BRIGHT_UP,        // "调亮一点"
-    CMD_BRIGHT_DOWN,      // "调暗一点"
-    CMD_BRIGHT_MAX,       // "亮度调到最大"
-    CMD_COLOR_WARM,       // "换成暖光"
-    CMD_COLOR_COOL,       // "换成冷光"
-    CMD_QUERY_MODE,       // "现在是什么模式"
-    CMD_AUTO_RESUME,      // "恢复自动"
-} voice_command_t;
+    CMD_BRIGHT_UP,      // "调亮一点"
+    CMD_BRIGHT_DOWN,    // "调暗一点"
+    CMD_COLOR_WARM,     // "换成暖光"
+    CMD_COLOR_COOL,     // "换成冷光"
+    CMD_SCENE_FOCUS,    // "打开专注模式"
+    CMD_AUTO_RESUME,    // "恢复自动"
+} voice_led_cmd_t;
 ```
-
-**验收标准**：
-- [ ] 命令词识别正常
-- [ ] 支持中文命令
 
 ---
 
-## T2.2 唤醒词模块
+### T2a.2 直接 LED 控制
 
-### T2.2.1 唤醒词检测实现
+#### T2a.2.1 语音命令 → PWM 直接映射
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.2.1 |
-| **任务名称** | 唤醒词检测模块实现 |
-| **预估工时** | 6h |
-| **前置任务** | T2.1.3 |
+| **任务ID** | T2a.2.1 |
+| **任务名称** | 语音命令直接控制 LED |
+| **预估工时** | 4h |
+| **前置任务** | T2a.1.3 |
 
 **文件清单**：
-- `main/src/voice/wake_word.c`
-- `main/include/wake_word.h`
+- `main/src/voice/voice_led_control.c`
+- `main/include/voice_led_control.h`
 
 **核心逻辑**：
 ```c
-void wake_word_task(void *arg) {
-    while (1) {
-        // 1. 从 I2S 读取音频
-        i2s_read(audio_buffer, ...);
-
-        // 2. 送入 WakeNet 检测
-        int wake_id = wakenet_detect(audio_buffer);
-
-        // 3. 唤醒后切换到命令识别模式
-        if (wake_id >= 0) {
-            xEventGroupSetBits(va_event_group, WAKE_WORD_DETECTED);
-        }
+void execute_voice_led_command(voice_led_cmd_t cmd) {
+    switch (cmd) {
+        case CMD_BRIGHT_UP:
+            led_set_brightness(current_brightness + 20);
+            break;
+        case CMD_COLOR_WARM:
+            led_set_color_temp(3000);
+            break;
+        // ... 直接 PWM 控制
     }
 }
 ```
 
+---
+
+#### T2a.2.2 端到端验证
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T2a.2.2 |
+| **任务名称** | 语音命令 → LED 响应验证 |
+| **预估工时** | 4h |
+| **前置任务** | T2a.2.1 |
+
 **验收标准**：
-- [ ] 唤醒检测延迟 < 500ms
-- [ ] 误唤醒率 < 1次/小时
+- [ ] 唤醒词识别正常
+- [ ] 命令词识别正常
+- [ ] LED 响应正确
+- [ ] 端到端延迟 < 1s
 
 ---
 
-### T2.2.2 灵敏度调优
+## Phase 2b: 完整语音功能（1 周）
+
+> 目标：添加 TTS 语音反馈和 AEC 回声消除
+
+---
+
+### T2b.1 DAC + 扬声器集成
+
+#### T2b.1.1 MAX98357A 驱动实现
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.2.2 |
-| **任务名称** | 唤醒灵敏度参数调优 |
+| **任务ID** | T2b.1.1 |
+| **任务名称** | DAC 驱动实现 |
 | **预估工时** | 4h |
-| **前置任务** | T2.2.1 |
+
+**文件清单**：
+- `main/src/drivers/dac_driver.c`
+- `main/include/dac_driver.h`
+
+**接口定义**：
+```c
+esp_err_t dac_init(i2s_port_t i2s_port);  // 使用独立 I2S1
+esp_err_t dac_write(int16_t *data, size_t samples);
+```
+
+> ⚠️ **重要**：DAC 和麦克风使用独立 I2S 通道（I2S0/I2S1），避免时钟冲突。
+
+---
+
+#### T2b.1.2 扬声器测试
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T2b.1.2 |
+| **任务名称** | 扬声器音频输出验证 |
+| **预估工时** | 2h |
+
+**验收标准**：
+- [ ] I2S1 输出正常
+- [ ] 音频无杂音
+
+---
+
+### T2b.2 AEC 回声消除配置
+
+#### T2b.2.1 ESP-ADF AEC 流水线配置
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T2b.2.1 |
+| **任务名称** | AEC 流水线实现 |
+| **预估工时** | 6h |
+
+**文件清单**：
+- `main/src/voice/aec_pipeline.c`
+- `main/include/aec_pipeline.h`
+
+> ⚠️ **硬件闭环关键**：AEC 需要硬件提供一路 Reference（参考音频）信号，
+> 严格按 ESP-ADF 示例配置，否则设备自身语音会被麦克风录入造成误识别。
+
+---
+
+#### T2b.2.2 AEC 效果验证
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T2b.2.2 |
+| **任务名称** | 回声消除测试 |
+| **预估工时** | 4h |
 
 **测试场景**：
-- 安静环境（< 40dB）
-- 正常环境（40-60dB）
-- 嘈杂环境（> 60dB）
-
-**验收标准**：
-- [ ] 安静环境识别率 > 98%
-- [ ] 正常环境识别率 > 95%
+- 设备播放 TTS 时唤醒词不应触发
+- 设备播放 TTS 时命令词不应被误识别
 
 ---
 
-## T2.3 命令词模块
+### T2b.3 VAD 动态路由
 
-### T2.3.1 命令处理器实现
+#### T2b.3.1 VAD 检测实现
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.3.1 |
-| **任务名称** | 命令处理器核心实现 |
-| **预估工时** | 8h |
-| **前置任务** | T2.2.1 |
+| **任务ID** | T2b.3.1 |
+| **任务名称** | VAD 检测模块 |
+| **预估工时** | 4h |
 
 **文件清单**：
-- `main/src/voice/command_handler.c`
-- `main/include/command_handler.h`
+- `main/src/voice/vad_detector.c`
 
 **核心逻辑**：
 ```c
-void command_handler_task(void *arg) {
-    while (1) {
-        // 等待唤醒事件
-        xEventGroupWaitBits(va_event_group, WAKE_WORD_DETECTED, ...);
-
-        // 进入命令识别模式（5s 超时）
-        for (int i = 0; i < 50; i++) {
-            int cmd_id = multinet_detect(audio_buffer);
-            if (cmd_id >= 0) {
-                execute_command(cmd_id);
-                break;
-            }
-            vTaskDelay(100);
-        }
-    }
+// VAD 动态路由：分时复用麦克风流
+if (vad_detected()) {
+    audio_route_to(ESP_SR);   // 有人声 → 语音识别
+} else {
+    audio_route_to(TFLM);     // 无人声 → 多模态推理
 }
 ```
 
-**验收标准**：
-- [ ] 命令识别正确
-- [ ] 5s 内无命令自动退出
-
 ---
 
-### T2.3.2 场景命令实现
+#### T2b.3.2 麦克风流动态路由
 | 属性 | 内容 |
 |------|------|
-| **任务ID** | T2.3.2 |
-| **任务名称** | 场景切换命令实现 |
-| **预估工时** | 4h |
-| **前置任务** | T2.3.1 |
-
-**场景定义**：
-```c
-static const scene_config_t scenes[] = {
-    {"专注模式", 4000, 60},   // 冷光，中等亮度
-    {"会议模式", 5000, 80},   // 自然光，高亮度
-    {"演示模式", 3000, 30},   // 暖光，低亮度
-    {"休息模式", 2700, 40},   // 暖光，低亮度
-};
-```
-
-**验收标准**：
-- [ ] 4 种场景切换正确
-- [ ] 参数设置符合定义
-
----
-
-## T2.4 语音助手核心
-
-### T2.4.1 语音助手主循环
-| 属性 | 内容 |
-|------|------|
-| **任务ID** | T2.4.1 |
-| **任务名称** | 语音助手主循环实现 |
+| **任务ID** | T2b.3.2 |
+| **任务名称** | 音频路由器实现 |
 | **预估工时** | 6h |
-| **前置任务** | T2.3.2 |
 
 **文件清单**：
-- `main/src/voice/voice_assistant.c`
-- `main/include/voice_assistant.h`
-
-**状态机**：
-```
-IDLE → WAITING_WAKE → LISTENING_CMD → EXECUTING → IDLE
-```
-
-**验收标准**：
-- [ ] 状态转换正确
-- [ ] 超时机制有效
-
----
-
-## 任务依赖图
-
-```
-T2.1.1 → T2.1.2 → T2.1.3
-                      │
-                      ↓
-                 T2.2.1 → T2.2.2
-                      │
-                      ↓
-                 T2.3.1 → T2.3.2
-                      │
-                      ↓
-                 T2.4.1
-```
+- `main/src/voice/audio_router.c`
 
 ---
 
@@ -247,11 +238,14 @@ T2.1.1 → T2.1.2 → T2.1.3
 
 | 里程碑 | 完成任务 | 预计完成 |
 |--------|---------|---------|
-| M2.1 ESP-SR 集成 | T2.1.1 - T2.1.3 | 第1周 |
-| M2.2 唤醒词模块 | T2.2.1 - T2.2.2 | 第2周 |
-| M2.3 命令词模块 | T2.3.1 - T2.3.2 | 第2周 |
-| M2.4 语音助手 | T2.4.1 | 第3周 |
+| M2a.1 ESP-SR 基础 | T2a.1.1 - T2a.1.3 | 第1周前半 |
+| M2a.2 端到端验证 | T2a.2.1 - T2a.2.2 | 第1周后半 |
+| M2b.1 DAC 集成 | T2b.1.1 - T2b.1.2 | 第2周前半 |
+| M2b.2 AEC 配置 | T2b.2.1 - T2b.2.2 | 第2周中 |
+| M2b.3 VAD 路由 | T2b.3.1 - T2b.3.2 | 第2周后半 |
 
 ---
 
 *创建日期：2026-04-27*
+*版本：v2.0*
+*最后更新：2026-04-28*
