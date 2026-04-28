@@ -12,16 +12,12 @@ on:
       - 'prj-v3/**'
   workflow_dispatch:  # 手动触发
 
-env:
-  IDF_PATH: /opt/esp/idf
-  IDF_VERSION: v5.4.4
-
 jobs:
   build:
     name: Build Firmware
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:${{ env.IDF_VERSION }}
+      image: espressif/idf:v5.4.4
       options: --user root
     
     steps:
