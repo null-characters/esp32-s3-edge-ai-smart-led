@@ -1,7 +1,6 @@
 # 最小任务单元清单 - Phase 3 多模态迁移
 
 > TFLM 模型迁移与驱动适配
-> **预估周期：2 周，可与 Phase 2b 并行开发**
 
 ---
 
@@ -43,7 +42,7 @@
 
 **模型规格**：sound_classifier.tflite (~30KB)
 
-### T3.2.2 达分析模型迁移
+### T3.2.2 雷达分析模型迁移
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T3.2.2 |
@@ -115,29 +114,6 @@
 
 **交付物**：`lighting_decision.c`
 
-### T3.5.3 统一事件格式定义 ⭐
-| 属性 | 内容 |
-|------|------|
-| **任务ID** | T3.5.3 |
-| **预估工时** | 2h |
-
-**交付物**：`Lighting_Event.h`
-
-```c
-typedef struct {
-    uint8_t source;      // 事件来源：VOICE/AUTO/DEFAULT
-    uint8_t type;        // 事件类型：SCENE/BRIGHT/COLOR
-    uint16_t ttl_ms;     // TTL 租约时长（仅语音事件有效）
-    union {
-        scene_config_t scene;
-        bright_config_t bright;
-        color_config_t color;
-    } data;
-} Lighting_Event_t;
-```
-
-> ⚠️ **重要**：统一事件格式是 Phase 4 仲裁机制的基础，需在 Phase 3 中定义完成。
-
 ---
 
 ## 里程碑
@@ -152,5 +128,3 @@ typedef struct {
 ---
 
 *创建日期：2026-04-27*
-*版本：v2.0*
-*最后更新：2026-04-28*
