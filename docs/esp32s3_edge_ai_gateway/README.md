@@ -75,15 +75,25 @@ esp32s3_edge_ai_gateway/
 | [02-大模块任务规划-仲裁机制模块.md](plan-v3-voice-interaction/02-大模块任务规划-仲裁机制模块.md) | Phase 4: 优先级仲裁机制 |
 | [02-大模块任务规划-集成测试模块.md](plan-v3-voice-interaction/02-大模块任务规划-集成测试模块.md) | Phase 5: 端到端集成测试 |
 
-### 最小任务单元清单
+### 开发阶段任务清单
 
 | 文档 | 说明 |
 |------|------|
-| [04-最小任务单元-Phase1-框架迁移.md](plan-v3-voice-interaction/04-最小任务单元-Phase1-框架迁移.md) | Phase 1 原子任务 |
-| [04-最小任务单元-Phase2-语音集成.md](plan-v3-voice-interaction/04-最小任务单元-Phase2-语音集成.md) | Phase 2 原子任务 |
-| [04-最小任务单元-Phase3-多模态迁移.md](plan-v3-voice-interaction/04-最小任务单元-Phase3-多模态迁移.md) | Phase 3 原子任务 |
-| [04-最小任务单元-Phase4-仲裁机制.md](plan-v3-voice-interaction/04-最小任务单元-Phase4-仲裁机制.md) | Phase 4 原子任务 |
-| [04-最小任务单元-Phase5-集成测试.md](plan-v3-voice-interaction/04-最小任务单元-Phase5-集成测试.md) | Phase 5 原子任务 |
+| [04-开发阶段-Phase1-框架迁移.md](plan-v3-voice-interaction/04-开发阶段-Phase1-框架迁移.md) | Phase 1: 框架迁移任务 |
+| [04-开发阶段-Phase2-语音集成.md](plan-v3-voice-interaction/04-开发阶段-Phase2-语音集成.md) | Phase 2: 语音集成任务 |
+| [04-开发阶段-Phase3-多模态迁移.md](plan-v3-voice-interaction/04-开发阶段-Phase3-多模态迁移.md) | Phase 3: 多模态迁移任务 |
+| [04-开发阶段-Phase4-仲裁机制.md](plan-v3-voice-interaction/04-开发阶段-Phase4-仲裁机制.md) | Phase 4: 仲裁机制任务 |
+| [04-开发阶段-Phase5-集成测试.md](plan-v3-voice-interaction/04-开发阶段-Phase5-集成测试.md) | Phase 5: 集成测试任务 |
+
+### 测试阶段验证清单
+
+| 文档 | 说明 |
+|------|------|
+| [05-测试阶段-UT1-框架模块单测.md](plan-v3-voice-interaction/05-测试阶段-UT1-框架模块单测.md) | UT1: 框架模块单元测试 |
+| [05-测试阶段-UT2-语音模块单测.md](plan-v3-voice-interaction/05-测试阶段-UT2-语音模块单测.md) | UT2: 语音模块单元测试 |
+| [05-测试阶段-UT3-多模态模块单测.md](plan-v3-voice-interaction/05-测试阶段-UT3-多模态模块单测.md) | UT3: 多模态模块单元测试 |
+| [05-测试阶段-UT4-仲裁模块单测.md](plan-v3-voice-interaction/05-测试阶段-UT4-仲裁模块单测.md) | UT4: 仲裁模块单元测试 |
+| [05-测试阶段-IT-集成测试.md](plan-v3-voice-interaction/05-测试阶段-IT-集成测试.md) | IT: 软硬件集成测试 |
 
 ---
 
@@ -110,4 +120,4 @@ esp32s3_edge_ai_gateway/
 
 ---
 
-*最后更新：2026-04-27*
+*最后更新：2026-04-28*
