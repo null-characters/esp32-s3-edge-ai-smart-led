@@ -94,8 +94,8 @@ esp_err_t led_set_brightness(uint8_t percent)
     g_brightness = percent;
     uint32_t duty = (8191 * percent) / 100;
     
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS));
+    /* 使用线程安全API (ESP-IDF v5.1+) */
+    ESP_ERROR_CHECK(ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, duty, 0));
     
     ESP_LOGD(TAG, "Brightness set to %d%% (duty=%lu)", percent, duty);
     return ESP_OK;
@@ -112,8 +112,8 @@ esp_err_t led_set_color_temp(uint16_t kelvin)
     uint32_t warm_ratio = (6500 - kelvin) * 100 / (6500 - 2700);
     uint32_t duty = (8191 * warm_ratio) / 100;
     
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP));
+    /* 使用线程安全API (ESP-IDF v5.1+) */
+    ESP_ERROR_CHECK(ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, duty, 0));
     
     ESP_LOGD(TAG, "Color temp set to %dK (warm_ratio=%lu%%)", kelvin, warm_ratio);
     return ESP_OK;
@@ -125,13 +125,10 @@ esp_err_t led_set_rgb(uint8_t r, uint8_t g, uint8_t b)
     uint32_t duty_g = (8191 * g) / 255;
     uint32_t duty_b = (8191 * b) / 255;
     
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_R, duty_r));
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_G, duty_g));
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL_B, duty_b));
-    
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_R));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_G));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_B));
+    /* 使用线程安全API (ESP-IDF v5.1+) */
+    ESP_ERROR_CHECK(ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL_R, duty_r, 0));
+    ESP_ERROR_CHECK(ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL_G, duty_g, 0));
+    ESP_ERROR_CHECK(ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL_B, duty_b, 0));
     
     ESP_LOGD(TAG, "RGB set to (%d, %d, %d)", r, g, b);
     return ESP_OK;

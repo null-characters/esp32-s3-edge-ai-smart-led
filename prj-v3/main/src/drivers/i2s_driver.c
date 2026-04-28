@@ -21,11 +21,14 @@ static const char *TAG = "I2S_DRV";
 /* 默认配置 */
 #define DEFAULT_SAMPLE_RATE 16000
 #define DEFAULT_BITS        16
-#define DMA_BUF_COUNT       8
-#define DMA_BUF_SIZE        512
+#define DMA_BUF_COUNT       16    /* 增加描述符数量防止高采样率数据丢失 */
+#define DMA_BUF_SIZE        1024  /* 增加帧大小 (官方建议最大4092字节) */
 
 static i2s_chan_handle_t g_rx_handle = NULL;
 static uint32_t g_sample_rate = DEFAULT_SAMPLE_RATE;
+
+/* 静态缓冲区用于清空DMA (避免栈分配) */
+static int16_t s_dummy_buf[DMA_BUF_SIZE];
 
 esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
 {
@@ -152,11 +155,10 @@ esp_err_t i2s_clear_dma_buffer(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // 读取并丢弃缓冲区数据
-    int16_t dummy[DMA_BUF_SIZE];
+    /* 使用静态缓冲区读取并丢弃数据 */
     size_t bytes_read;
     for (int i = 0; i < DMA_BUF_COUNT; i++) {
-        i2s_channel_read(g_rx_handle, (char *)dummy, sizeof(dummy), 
+        i2s_channel_read(g_rx_handle, (char *)s_dummy_buf, sizeof(s_dummy_buf), 
                          &bytes_read, pdMS_TO_TICKS(100));
     }
 

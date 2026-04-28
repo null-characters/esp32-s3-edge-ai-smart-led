@@ -123,6 +123,9 @@ esp_err_t my_wifi_sta_init(const char *ssid, const char *password)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
 
+    /* 配置WiFi省电模式 (降低功耗) */
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+
     // 保存配置
     strncpy(g_ssid, ssid, sizeof(g_ssid) - 1);
     strncpy(g_password, password, sizeof(g_password) - 1);

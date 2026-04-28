@@ -14,6 +14,7 @@
 #include "esp_wn_models.h"
 #include "esp_mn_iface.h"
 #include "esp_mn_models.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -231,11 +232,22 @@ int audio_afe_init(const audio_afe_config_t *config)
     g_state.feed_chunk_size = g_state.afe_iface->get_feed_chunksize(g_state.afe_data);
     g_state.fetch_chunk_size = g_state.afe_iface->get_fetch_chunksize(g_state.afe_data);
     
-    /* 分配音频缓冲区 */
-    g_state.audio_buffer = (int16_t *)malloc(g_state.feed_chunk_size * sizeof(int16_t));
+    /* 分配音频缓冲区到PSRAM (ESP32-S3有8MB外部内存) */
+    g_state.audio_buffer = (int16_t *)heap_caps_malloc(
+        g_state.feed_chunk_size * sizeof(int16_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
     if (!g_state.audio_buffer) {
-        ESP_LOGE(TAG, "分配音频缓冲区失败");
-        goto error;
+        /* 回退到内部RAM */
+        g_state.audio_buffer = (int16_t *)malloc(g_state.feed_chunk_size * sizeof(int16_t));
+        if (!g_state.audio_buffer) {
+            ESP_LOGE(TAG, "分配音频缓冲区失败");
+            goto error;
+        }
+        ESP_LOGW(TAG, "音频缓冲区分配到内部RAM (PSRAM不可用)");
+    } else {
+        ESP_LOGI(TAG, "音频缓冲区分配到PSRAM (%d bytes)", 
+                 g_state.feed_chunk_size * sizeof(int16_t));
     }
     
     g_state.initialized = true;
@@ -332,7 +344,7 @@ int audio_afe_start(void)
     BaseType_t ret = xTaskCreatePinnedToCore(
         audio_afe_task,
         "audio_afe",
-        8 * 1024,  /* 8KB 栈 */
+        16 * 1024,  /* 16KB 栈 (ESP-SR AFE需要较大栈空间) */
         &g_state,
         5,  /* 优先级 */
         &g_state.task_handle,
