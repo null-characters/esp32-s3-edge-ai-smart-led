@@ -1,0 +1,75 @@
+# Doxygen 配置文件 - ESP32-S3 Edge AI Smart LED
+
+PROJECT_NAME           = "ESP32-S3 Edge AI Smart LED"
+PROJECT_NUMBER         = "v3.0"
+PROJECT_BRIEF          = "多模态 AI 智能照明系统"
+OUTPUT_DIRECTORY       = docs/api
+
+# 输入配置
+INPUT                  = main/include main/src
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = YES
+
+# 输出配置
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+
+# 源码浏览
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+# 提取配置
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+# 文档格式
+OPTIMIZE_OUTPUT_FOR_C  = YES
+SHOW_USED_FILES        = YES
+SHOW_FILES             = YES
+SHOW_NAMESPACES        = NO
+
+# 预处理
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+EXPAND_ONLY_PREDEF     = NO
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = main/include
+
+# 图表生成
+HAVE_DOT               = NO
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+
+# 排除
+EXCLUDE                = build managed_components
+EXCLUDE_PATTERNS       = */build/* */managed_components/*
+
+# 其他
+ALPHABETICAL_INDEX     = YES
+COLS_IN_ALPHA_INDEX    = 3
+IGNORE_PREFIX          =
+
+# 样式
+HTML_COLORSTYLE_HUE    = 220
+HTML_COLORSTYLE_SAT    = 100
+HTML_COLORSTYLE_GAMMA  = 80
+HTML_TIMESTAMP         = YES
+HTML_DYNAMICSections   = YES
+
+# 搜索
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
+EXTERNAL_SEARCH        = NO
+
+# 版本信息
+GENERATE_TREEVIEW      = YES
+TREEVIEW_WIDTH         = 250
