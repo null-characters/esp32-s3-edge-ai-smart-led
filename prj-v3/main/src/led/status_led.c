@@ -7,6 +7,7 @@
 #include "ws2812_driver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"

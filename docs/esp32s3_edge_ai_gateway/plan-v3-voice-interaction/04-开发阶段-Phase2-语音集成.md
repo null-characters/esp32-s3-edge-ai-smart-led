@@ -226,6 +226,45 @@ IDLE → WAITING_WAKE → LISTENING_CMD → EXECUTING → IDLE
 
 ---
 
+## T2.5 状态指示灯集成 ⭐ 新增
+
+### T2.5.1 语音状态指示集成
+
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T2.5.1 |
+| **任务名称** | 语音状态指示灯集成 |
+| **预估工时** | 2h |
+| **前置任务** | T2.4.1 |
+
+**集成点**：
+```c
+// voice_assistant.c 中集成状态指示灯
+void on_wake_word_detected(void) {
+    status_led_set_voice(true, false);  // 白色呼吸 → 监听中
+}
+
+void on_command_processing(void) {
+    status_led_set_voice(false, true);  // 白色快闪 → 处理中
+}
+
+void on_command_result(bool success) {
+    status_led_show_result(success, 500);  // 绿色/红色快闪 → 结果反馈
+}
+
+void on_command_timeout(void) {
+    status_led_set_voice(false, false);  // 恢复模式状态
+}
+```
+
+**验收标准**：
+- [ ] 唤醒时白色呼吸效果
+- [ ] 处理时白色快闪效果
+- [ ] 成功时绿色快闪
+- [ ] 失败时红色快闪
+
+---
+
 ## 任务依赖图
 
 ```
@@ -238,7 +277,7 @@ T2.1.1 → T2.1.2 → T2.1.3
                  T2.3.1 → T2.3.2
                       │
                       ↓
-                 T2.4.1
+                 T2.4.1 → T2.5.1 ⭐ 状态指示灯集成
 ```
 
 ---
@@ -248,9 +287,10 @@ T2.1.1 → T2.1.2 → T2.1.3
 | 里程碑 | 完成任务 | 预计完成 |
 |--------|---------|---------|
 | M2.1 ESP-SR 集成 | T2.1.1 - T2.1.3 | 第1周 |
-| M2.2 唤醒词模块 | T2.2.1 - T2.2.2 | 第2周 |
+| M2.2 唤醒词模块 | T2.2.1 - T2.2.2 | 第1周 |
 | M2.3 命令词模块 | T2.3.1 - T2.3.2 | 第2周 |
-| M2.4 语音助手 | T2.4.1 | 第3周 |
+| M2.4 语音助手 | T2.4.1 | 第2周 |
+| M2.5 状态指示灯 | T2.5.1 | 第2周 ⭐ 新增 |
 
 ---
 

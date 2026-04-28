@@ -205,6 +205,91 @@ esp_err_t i2s_deinit(void);
 
 ---
 
+### T1.3.4 WS2812 驱动 ⭐ 新增
+
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T1.3.4 |
+| **任务名称** | WS2812 RGB LED 驱动实现 |
+| **预估工时** | 4h |
+| **前置任务** | T1.2.2 |
+
+**文件清单**：
+- `main/src/drivers/ws2812_driver.c`
+- `main/include/ws2812_driver.h`
+
+**接口定义**：
+```c
+esp_err_t ws2812_init(const ws2812_config_t *config);
+esp_err_t ws2812_set_pixel(uint8_t index, ws2812_color_t color);
+esp_err_t ws2812_set_all(ws2812_color_t color);
+esp_err_t ws2812_clear(void);
+esp_err_t ws2812_show(void);
+void ws2812_set_brightness(uint8_t brightness);
+
+// 预定义颜色
+#define WS2812_COLOR_RED    ((ws2812_color_t){255, 0, 0})
+#define WS2812_COLOR_GREEN  ((ws2812_color_t){0, 255, 0})
+#define WS2812_COLOR_BLUE   ((ws2812_color_t){0, 0, 255})
+#define WS2812_COLOR_YELLOW ((ws2812_color_t){255, 255, 0})
+#define WS2812_COLOR_CYAN   ((ws2812_color_t){0, 255, 255})
+#define WS2812_COLOR_PURPLE ((ws2812_color_t){128, 0, 128})
+#define WS2812_COLOR_WHITE  ((ws2812_color_t){255, 255, 255})
+```
+
+**验收标准**：
+- [ ] GPIO48 RMT 输出正常
+- [ ] RGB 颜色可控制
+- [ ] 亮度可调节 (0-255)
+
+---
+
+### T1.3.5 状态指示灯管理 ⭐ 新增
+
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T1.3.5 |
+| **任务名称** | 状态指示灯管理模块实现 |
+| **预估工时** | 4h |
+| **前置任务** | T1.3.4 |
+
+**文件清单**：
+- `main/src/led/status_led.c`
+- `main/include/status_led.h`
+
+**接口定义**：
+```c
+esp_err_t status_led_init(const status_led_config_t *config);
+void status_led_start(void);
+void status_led_stop(void);
+esp_err_t status_led_set_state(status_led_state_enum_t state);
+void status_led_update_wifi(wifi_sta_state_t wifi_state);
+void status_led_update_mode(system_mode_t mode);
+void status_led_set_voice(bool listening, bool processing);
+void status_led_show_result(bool success, uint32_t duration_ms);
+
+// 状态枚举
+typedef enum {
+    STATUS_LED_WIFI_DISCONNECTED,  // 红色慢闪
+    STATUS_LED_WIFI_CONNECTING,    // 黄色快闪
+    STATUS_LED_WIFI_CONNECTED,     // 绿色常亮
+    STATUS_LED_MODE_AUTO,          // 蓝色常亮
+    STATUS_LED_MODE_MANUAL,        // 青色常亮
+    STATUS_LED_MODE_VOICE,         // 紫色常亮
+    STATUS_LED_VOICE_LISTENING,    // 白色呼吸
+    STATUS_LED_VOICE_PROCESSING,   // 白色快闪
+    STATUS_LED_BOOTING,            // 彩虹渐变
+} status_led_state_enum_t;
+```
+
+**验收标准**：
+- [ ] WiFi 状态自动更新
+- [ ] 模式切换自动更新
+- [ ] 语音状态实时反馈
+- [ ] 启动动画正常
+
+---
+
 ## T1.4 网络连接
 
 ### T1.4.1 Wi-Fi STA 模式
@@ -237,7 +322,11 @@ T1.2.1 ──── T1.2.2 ───┼── T1.3.1
                       │      │
                       │      ├── T1.3.2
                       │      │
-                      │      └── T1.3.3
+                      │      ├── T1.3.3
+                      │      │
+                      │      ├── T1.3.4 ─── T1.3.5 ⭐ 状态指示灯
+                      │      │
+                      │      └── T1.4.1
                       │
                       └── T1.4.1
 ```
@@ -250,7 +339,7 @@ T1.2.1 ──── T1.2.2 ───┼── T1.3.1
 |--------|---------|---------|
 | M1.1 项目骨架 | T1.1.1 - T1.1.3 | 第1天 |
 | M1.2 目录结构 | T1.2.1 - T1.2.2 | 第2天 |
-| M1.3 外设驱动 | T1.3.1 - T1.3.3 | 第5天 |
+| M1.3 外设驱动 | T1.3.1 - T1.3.5 | 第5天 |
 | M1.4 网络连接 | T1.4.1 | 第7天 |
 
 ---
