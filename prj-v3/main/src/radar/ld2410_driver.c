@@ -20,8 +20,8 @@ static const char *TAG = "ld2410";
 /* UART 配置 */
 #define LD2410_UART_NUM     UART_NUM_1
 #define LD2410_UART_BAUD    256000
-#define LD2410_UART_TX_PIN  17
-#define LD2410_UART_RX_PIN  18
+#define LD2410_UART_TX_PIN  8   /* 改为 GPIO8，避免与 DAC (GPIO17/18) 冲突 */
+#define LD2410_UART_RX_PIN  9   /* 改为 GPIO9，避免与 DAC (GPIO17/18) 冲突 */
 #define UART_BUF_SIZE       256
 
 /* DMA 接收缓冲区 */

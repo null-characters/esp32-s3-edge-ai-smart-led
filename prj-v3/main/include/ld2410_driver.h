@@ -7,7 +7,7 @@
  * - 数据帧解析
  * - 特征提取
  * 
- * 硬件接口：UART1 (TX=GPIO17, RX=GPIO18)
+ * 硬件接口：UART1 (TX=GPIO8, RX=GPIO9)
  */
 
 #ifndef LD2410_DRIVER_H
