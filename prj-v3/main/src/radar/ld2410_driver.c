@@ -162,6 +162,10 @@ int ld2410_init(void)
     
     /* 创建互斥锁 */
     data_mutex = xSemaphoreCreateMutex();
+    if (!data_mutex) {
+        ESP_LOGE(TAG, "创建 mutex 失败");
+        return -1;
+    }
     
     /* 启动接收 */
     uart_read_bytes(LD2410_UART_NUM, rx_buf[0], UART_BUF_SIZE, 100 / portTICK_PERIOD_MS);

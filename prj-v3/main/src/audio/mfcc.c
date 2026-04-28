@@ -19,6 +19,10 @@ static const char *TAG = "mfcc";
 /* MFCC 状态 */
 static mfcc_state_t mfcc_state;
 
+/* 静态工作缓冲区 (避免栈溢出) */
+static float s_pre_emph_buf[MFCC_SAMPLE_RATE];                    /**< 预加重缓冲 64KB */
+static float s_frames_buf[MFCC_NUM_FRAMES][MFCC_FRAME_SIZE];      /**< 分帧缓冲 51KB */
+
 /* 预加重系数 */
 #define PRE_EMPH_ALPHA  0.97f
 
@@ -113,15 +117,13 @@ int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *featu
         mfcc_init();
     }
     
-    /* 1. 预加重 */
-    float pre_emph[MFCC_SAMPLE_RATE];  /* 1秒音频 */
+    /* 1. 预加重 (使用静态缓冲区) */
     int pre_len = (num_samples < MFCC_SAMPLE_RATE) ? num_samples : MFCC_SAMPLE_RATE;
-    mfcc_pre_emphasis(samples, pre_emph, pre_len, PRE_EMPH_ALPHA);
+    mfcc_pre_emphasis(samples, s_pre_emph_buf, pre_len, PRE_EMPH_ALPHA);
     
-    /* 2. 分帧 */
-    float frames[MFCC_NUM_FRAMES][MFCC_FRAME_SIZE];
+    /* 2. 分帧 (使用静态缓冲区) */
     int num_frames;
-    mfcc_frame_signal(pre_emph, pre_len, frames, &num_frames);
+    mfcc_frame_signal(s_pre_emph_buf, pre_len, s_frames_buf, &num_frames);
     
     /* 限制帧数 */
     if (num_frames > MFCC_NUM_FRAMES) {
@@ -134,11 +136,11 @@ int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *featu
     /* 3. 逐帧处理 */
     for (int f = 0; f < num_frames; f++) {
         /* 应用汉明窗 */
-        mfcc_apply_window(frames[f], MFCC_FRAME_SIZE);
+        mfcc_apply_window(s_frames_buf[f], MFCC_FRAME_SIZE);
         
         /* 计算 FFT */
         float spectrum[MFCC_FFT_SIZE];
-        mfcc_fft(frames[f], spectrum, MFCC_FFT_SIZE);
+        mfcc_fft(s_frames_buf[f], spectrum, MFCC_FFT_SIZE);
         
         /* 计算功率谱 */
         float power[MFCC_FFT_SIZE / 2 + 1];
