@@ -30,11 +30,11 @@ static const char *TAG = "AUDIO_AFE";
 static void print_memory_status(void)
 {
     ESP_LOGI(TAG, "内存状态:");
-    ESP_LOGI(TAG, "  内部RAM: %lu bytes 可用", 
+    ESP_LOGI(TAG, "  内部RAM: %zu bytes 可用", 
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "  PSRAM: %lu bytes 可用", 
+    ESP_LOGI(TAG, "  PSRAM: %zu bytes 可用", 
              heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    ESP_LOGI(TAG, "  DMA可用: %lu bytes", 
+    ESP_LOGI(TAG, "  DMA可用: %zu bytes", 
              heap_caps_get_free_size(MALLOC_CAP_DMA));
 }
 
