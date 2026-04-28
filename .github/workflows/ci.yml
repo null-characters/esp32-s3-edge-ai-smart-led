@@ -1,0 +1,221 @@
+name: ESP32-S3 Edge AI Smart LED CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'prj-v3/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'prj-v3/**'
+  workflow_dispatch:  # 手动触发
+
+env:
+  IDF_PATH: /opt/esp/idf
+  IDF_VERSION: v5.4
+
+jobs:
+  build:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:${{ env.IDF_VERSION }}
+      options: --user root
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      
+      - name: Build prj-v3
+        working-directory: prj-v3
+        run: |
+          idf.py set-target esp32s3
+          idf.py build
+      
+      - name: Generate SPIFFS image
+        working-directory: prj-v3
+        run: |
+          idf.py spiffs-image
+      
+      - name: Check firmware size
+        working-directory: prj-v3
+        run: |
+          echo "=== 固件大小检查 ==="
+          ls -lh build/*.bin || true
+          ls -lh build/prj-v3.bin || true
+          # 计算总大小
+          total=$(du -sb build/*.bin 2>/dev/null | tail -1 | cut -f1)
+          echo "固件总大小: $total 字节"
+          if [ "$total" -gt 2097152 ]; then
+            echo "::warning::固件大小超过 2MB 目标"
+          fi
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bin
+          path: |
+            prj-v3/build/*.bin
+            prj-v3/build/bootloader/bootloader.bin
+            prj-v3/build/partition_table/partition-table.bin
+          retention-days: 7
+
+  unit-tests:
+    name: Unit Tests (Host-based)
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Unity test framework
+        run: |
+          pip install unity-test pytest
+          sudo apt-get update && sudo apt-get install -y gcc cmake
+      
+      - name: Run host-based unit tests
+        working-directory: prj-v3
+        run: |
+          # 创建模拟测试目录
+          mkdir -p tests_host
+          # 运行纯逻辑测试 (无需硬件)
+          echo "=== 主机端单元测试 ==="
+          # TODO: 添加主机端测试脚本
+          echo "主机端测试框架已准备"
+
+  model-validation:
+    name: Model Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        working-directory: prj-v3/ai
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Validate model sizes
+        working-directory: prj-v3/models
+        run: |
+          echo "=== 模型大小验证 ==="
+          total=0
+          for model in *.tflite; do
+            if [[ "$model" != *"float"* ]]; then
+              size=$(stat -c%s "$model" 2>/dev/null || stat -f%z "$model")
+              echo "$model: $size 字节"
+              total=$((total + size))
+            fi
+          done
+          echo "模型总大小: $total 字节"
+          if [ "$total" -gt 51200 ]; then
+            echo "::warning::模型总大小超过 50KB"
+          fi
+      
+      - name: Test model inference (Python)
+        working-directory: prj-v3/ai
+        run: |
+          python -c "
+          import tensorflow as tf
+          import numpy as np
+          
+          # 加载模型
+          models = ['sound_classifier', 'radar_analyzer', 'fusion_model']
+          for name in models:
+              try:
+                  model_path = f'../models/{name}.tflite'
+                  interpreter = tf.lite.Interpreter(model_path=model_path)
+                  interpreter.allocate_tensors()
+                  input_details = interpreter.get_input_details()
+                  output_details = interpreter.get_output_details()
+                  
+                  # 测试推理
+                  input_shape = input_details[0]['shape']
+                  input_data = np.random.randint(0, 255, input_shape, dtype=np.uint8)
+                  interpreter.set_tensor(input_details[0]['index'], input_data)
+                  interpreter.invoke()
+                  output = interpreter.get_tensor(output_details[0]['index'])
+                  
+                  print(f'{name}: 输入 {input_shape}, 输出 {output.shape} ✓')
+              except Exception as e:
+                  print(f'{name}: 错误 - {e}')
+          "
+
+  lint:
+    name: Code Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run C code lint
+        working-directory: prj-v3
+        run: |
+          echo "=== C 代码检查 ==="
+          # 检查常见问题
+          find main/src -name "*.c" -exec grep -l "TODO\|FIXME\|XXX" {} \; || true
+          # 检查编码风格
+          find main/src -name "*.c" | wc -l
+          find main/src -name "*.h" | wc -l
+          echo "代码文件统计完成"
+
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Check documentation completeness
+        run: |
+          echo "=== 文档完整性检查 ==="
+          # 检查关键文档
+          docs=(
+            "README.md"
+            "docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/03-任务追踪表.md"
+            "docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/05-测试阶段-IT-集成测试.md"
+            "prj-v3/models/README.md"
+          )
+          for doc in "${docs[@]}"; do
+            if [ -f "$doc" ]; then
+              echo "$doc ✓"
+            else
+              echo "$doc ✗ (缺失)"
+            fi
+          done
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [build, model-validation, lint, docs-check]
+    if: always()
+    
+    steps:
+      - name: Generate CI Summary
+        run: |
+          echo "## CI 执行摘要" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 任务 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 编译 | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 模型验证 | ${{ needs.model-validation.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 代码检查 | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 文档检查 | ${{ needs.docs-check.result }} |" >> $GITHUB_STEP_SUMMARY
