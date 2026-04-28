@@ -17,6 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 static const char *TAG = "AUDIO_AFE";
@@ -43,10 +44,12 @@ typedef struct {
     /* 回调 */
     audio_afe_callback_t callback;
     void *user_data;
+    SemaphoreHandle_t callback_mutex;  /**< 回调设置保护 */
     
     /* 任务控制 */
     TaskHandle_t task_handle;
     volatile bool running;
+    TaskHandle_t caller_handle;        /**< 停止调用者任务句柄 */
 } audio_afe_state_t;
 
 static audio_afe_state_t g_state = {0};
@@ -114,15 +117,27 @@ static void audio_afe_task(void *arg)
                     .wake_word_index = result->wake_word_index,
                 };
                 
-                /* 回调通知 */
-                if (state->callback) {
-                    state->callback(&afe_result, state->user_data);
+                /* 安全回调通知 */
+                if (xSemaphoreTake(state->callback_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    audio_afe_callback_t cb = state->callback;
+                    void *user_data = state->user_data;
+                    xSemaphoreGive(state->callback_mutex);
+                    
+                    if (cb) {
+                        cb(&afe_result, user_data);
+                    }
                 }
             }
         }
     }
     
     ESP_LOGI(TAG, "音频处理任务退出");
+    
+    /* 通知停止调用者 */
+    if (state->caller_handle) {
+        xTaskNotifyGive(state->caller_handle);
+    }
+    
     vTaskDelete(NULL);
 }
 
@@ -159,9 +174,18 @@ int audio_afe_init(const audio_afe_config_t *config)
         ESP_LOGW(TAG, "模型列表加载失败，使用默认配置");
         /* 创建空模型列表，ESP-SR 会使用内置模型 */
         g_state.models = (srmodel_list_t *)malloc(sizeof(srmodel_list_t));
-        if (g_state.models) {
-            memset(g_state.models, 0, sizeof(srmodel_list_t));
+        if (!g_state.models) {
+            ESP_LOGE(TAG, "分配模型列表失败");
+            goto error;
         }
+        memset(g_state.models, 0, sizeof(srmodel_list_t));
+    }
+    
+    /* 创建回调保护 mutex */
+    g_state.callback_mutex = xSemaphoreCreateMutex();
+    if (!g_state.callback_mutex) {
+        ESP_LOGE(TAG, "创建 mutex 失败");
+        goto error;
     }
     
     /* 配置 AFE */
@@ -223,6 +247,9 @@ int audio_afe_init(const audio_afe_config_t *config)
     return 0;
 
 error:
+    if (g_state.callback_mutex) {
+        vSemaphoreDelete(g_state.callback_mutex);
+    }
     if (g_state.afe_data && g_state.afe_iface) {
         g_state.afe_iface->destroy(g_state.afe_data);
     }
@@ -275,6 +302,12 @@ void audio_afe_deinit(void)
         free(g_state.audio_buffer);
     }
     
+    /* 释放 mutex */
+    if (g_state.callback_mutex) {
+        vSemaphoreDelete(g_state.callback_mutex);
+        g_state.callback_mutex = NULL;
+    }
+    
     /* 释放 I2S */
     i2s_deinit();
     
@@ -324,10 +357,18 @@ void audio_afe_stop(void)
     
     g_state.running = false;
     
-    /* 等待任务结束 */
+    /* 使用任务通知等待任务退出 */
     if (g_state.task_handle) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        g_state.caller_handle = xTaskGetCurrentTaskHandle();
+        
+        /* 等待任务通知，超时 500ms */
+        uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
+        if (notified == 0) {
+            ESP_LOGW(TAG, "等待任务退出超时");
+        }
+        
         g_state.task_handle = NULL;
+        g_state.caller_handle = NULL;
     }
     
     ESP_LOGI(TAG, "音频处理已停止");
@@ -394,8 +435,14 @@ bool audio_afe_fetch(audio_afe_result_t *result)
 
 void audio_afe_set_callback(audio_afe_callback_t callback, void *user_data)
 {
+    if (g_state.callback_mutex) {
+        xSemaphoreTake(g_state.callback_mutex, portMAX_DELAY);
+    }
     g_state.callback = callback;
     g_state.user_data = user_data;
+    if (g_state.callback_mutex) {
+        xSemaphoreGive(g_state.callback_mutex);
+    }
 }
 
 void audio_afe_wakenet_enable(bool enable)

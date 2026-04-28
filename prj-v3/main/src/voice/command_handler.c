@@ -7,6 +7,8 @@
 #include "led_pwm.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 static const char *TAG = "CMD_HANDLER";
@@ -64,6 +66,7 @@ static system_state_t g_state = {
 
 static command_callback_t g_callback = NULL;
 static void *g_user_data = NULL;
+static SemaphoreHandle_t g_state_mutex = NULL;  /**< 状态保护 mutex */
 
 /* ================================================================
  * 内部函数
@@ -86,8 +89,11 @@ static int execute_light_control(const light_control_t *params)
         led_set_brightness(0);
     }
     
-    /* 更新状态 */
-    memcpy(&g_state.light, params, sizeof(light_control_t));
+    /* 更新状态 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        memcpy(&g_state.light, params, sizeof(light_control_t));
+        xSemaphoreGive(g_state_mutex);
+    }
     
     ESP_LOGI(TAG, "灯光控制: 亮度=%d%%, 色温=%dK, 主灯=%s, 辅助灯=%s",
              params->brightness, params->color_temp,
@@ -109,7 +115,10 @@ static command_result_t handle_scene_command(int command_id)
     
     const scene_preset_t *preset = &g_scene_presets[scene_index];
     if (execute_light_control(&preset->params) == 0) {
-        g_state.current_scene = command_id;
+        if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            g_state.current_scene = command_id;
+            xSemaphoreGive(g_state_mutex);
+        }
         ESP_LOGI(TAG, "切换场景: %s", preset->name);
         return CMD_RESULT_OK;
     }
@@ -122,7 +131,15 @@ static command_result_t handle_scene_command(int command_id)
  */
 static command_result_t handle_brightness_command(int command_id)
 {
-    int brightness = g_state.light.brightness;
+    int brightness;
+    
+    /* 获取当前亮度 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        brightness = g_state.light.brightness;
+        xSemaphoreGive(g_state_mutex);
+    } else {
+        brightness = 50;  /* 默认值 */
+    }
     
     switch (command_id) {
         case CMD_BRIGHT_UP:
@@ -156,8 +173,14 @@ static command_result_t handle_brightness_command(int command_id)
             return CMD_RESULT_INVALID;
     }
     
-    g_state.light.brightness = brightness;
-    execute_light_control(&g_state.light);
+    light_control_t params;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        params = g_state.light;
+        params.brightness = brightness;
+        xSemaphoreGive(g_state_mutex);
+    }
+    
+    execute_light_control(&params);
     
     return CMD_RESULT_OK;
 }
@@ -167,7 +190,15 @@ static command_result_t handle_brightness_command(int command_id)
  */
 static command_result_t handle_cct_command(int command_id)
 {
-    int color_temp = g_state.light.color_temp;
+    int color_temp;
+    
+    /* 获取当前色温 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        color_temp = g_state.light.color_temp;
+        xSemaphoreGive(g_state_mutex);
+    } else {
+        color_temp = 4000;  /* 默认值 */
+    }
     
     switch (command_id) {
         case CMD_CCT_WARM:
@@ -192,8 +223,14 @@ static command_result_t handle_cct_command(int command_id)
             return CMD_RESULT_INVALID;
     }
     
-    g_state.light.color_temp = color_temp;
-    execute_light_control(&g_state.light);
+    light_control_t params;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        params = g_state.light;
+        params.color_temp = color_temp;
+        xSemaphoreGive(g_state_mutex);
+    }
+    
+    execute_light_control(&params);
     
     return CMD_RESULT_OK;
 }
@@ -203,34 +240,44 @@ static command_result_t handle_cct_command(int command_id)
  */
 static command_result_t handle_power_command(int command_id)
 {
+    light_control_t params;
+    
+    /* 获取当前状态 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        params = g_state.light;
+        xSemaphoreGive(g_state_mutex);
+    } else {
+        return CMD_RESULT_FAILED;
+    }
+    
     switch (command_id) {
         case CMD_POWER_ON:
         case CMD_POWER_ALL_ON:
-            g_state.light.main_light_on = true;
-            g_state.light.aux_light_on = true;
+            params.main_light_on = true;
+            params.aux_light_on = true;
             break;
         case CMD_POWER_OFF:
         case CMD_POWER_ALL_OFF:
-            g_state.light.main_light_on = false;
-            g_state.light.aux_light_on = false;
+            params.main_light_on = false;
+            params.aux_light_on = false;
             break;
         case CMD_POWER_MAIN_ON:
-            g_state.light.main_light_on = true;
+            params.main_light_on = true;
             break;
         case CMD_POWER_MAIN_OFF:
-            g_state.light.main_light_on = false;
+            params.main_light_on = false;
             break;
         case CMD_POWER_AUX_ON:
-            g_state.light.aux_light_on = true;
+            params.aux_light_on = true;
             break;
         case CMD_POWER_AUX_OFF:
-            g_state.light.aux_light_on = false;
+            params.aux_light_on = false;
             break;
         default:
             return CMD_RESULT_INVALID;
     }
     
-    execute_light_control(&g_state.light);
+    execute_light_control(&params);
     return CMD_RESULT_OK;
 }
 
@@ -239,21 +286,27 @@ static command_result_t handle_power_command(int command_id)
  */
 static command_result_t handle_mode_command(int command_id)
 {
-    switch (command_id) {
-        case CMD_MODE_AUTO:
-            g_state.mode = MODE_AUTO;
-            ESP_LOGI(TAG, "切换到自动模式");
-            break;
-        case CMD_MODE_MANUAL:
-            g_state.mode = MODE_MANUAL;
-            ESP_LOGI(TAG, "切换到手动模式");
-            break;
-        case CMD_MODE_VOICE:
-            g_state.mode = MODE_VOICE;
-            ESP_LOGI(TAG, "切换到语音模式");
-            break;
-        default:
-            return CMD_RESULT_INVALID;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        switch (command_id) {
+            case CMD_MODE_AUTO:
+                g_state.mode = MODE_AUTO;
+                ESP_LOGI(TAG, "切换到自动模式");
+                break;
+            case CMD_MODE_MANUAL:
+                g_state.mode = MODE_MANUAL;
+                ESP_LOGI(TAG, "切换到手动模式");
+                break;
+            case CMD_MODE_VOICE:
+                g_state.mode = MODE_VOICE;
+                ESP_LOGI(TAG, "切换到语音模式");
+                break;
+            default:
+                xSemaphoreGive(g_state_mutex);
+                return CMD_RESULT_INVALID;
+        }
+        xSemaphoreGive(g_state_mutex);
+    } else {
+        return CMD_RESULT_FAILED;
     }
     
     return CMD_RESULT_OK;
@@ -266,6 +319,15 @@ static command_result_t handle_mode_command(int command_id)
 int command_handler_init(void)
 {
     ESP_LOGI(TAG, "初始化命令处理器");
+    
+    /* 创建状态保护 mutex */
+    if (!g_state_mutex) {
+        g_state_mutex = xSemaphoreCreateMutex();
+        if (!g_state_mutex) {
+            ESP_LOGE(TAG, "创建 mutex 失败");
+            return -1;
+        }
+    }
     
     g_state.mode = MODE_AUTO;
     g_state.current_scene = CMD_INVALID;
@@ -281,9 +343,12 @@ command_result_t command_handler_process(int command_id)
         return CMD_RESULT_INVALID;
     }
     
-    /* 更新最后命令时间 */
-    g_state.last_command_time = (uint32_t)(esp_timer_get_time() / 1000);
-    g_state.voice_active = true;
+    /* 更新最后命令时间 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        g_state.last_command_time = (uint32_t)(esp_timer_get_time() / 1000);
+        g_state.voice_active = true;
+        xSemaphoreGive(g_state_mutex);
+    }
     
     command_result_t result = CMD_RESULT_OK;
     command_category_t category = command_get_category(command_id);
@@ -331,8 +396,11 @@ command_result_t command_handler_process(int command_id)
 
 void command_handler_set_callback(command_callback_t callback, void *user_data)
 {
-    g_callback = callback;
-    g_user_data = user_data;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        g_callback = callback;
+        g_user_data = user_data;
+        xSemaphoreGive(g_state_mutex);
+    }
 }
 
 const system_state_t* command_handler_get_state(void)
@@ -342,33 +410,45 @@ const system_state_t* command_handler_get_state(void)
 
 int command_handler_set_mode(system_mode_t mode)
 {
-    g_state.mode = mode;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        g_state.mode = mode;
+        xSemaphoreGive(g_state_mutex);
+    }
     return 0;
 }
 
 int command_handler_restore_auto(void)
 {
-    g_state.mode = MODE_AUTO;
-    g_state.voice_active = false;
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        g_state.mode = MODE_AUTO;
+        g_state.voice_active = false;
+        xSemaphoreGive(g_state_mutex);
+    }
     ESP_LOGI(TAG, "恢复自动控制");
     return 0;
 }
 
 bool command_handler_check_timeout(uint32_t timeout_ms)
 {
-    if (!g_state.voice_active) {
-        return false;
+    bool timeout = false;
+    
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (!g_state.voice_active) {
+            xSemaphoreGive(g_state_mutex);
+            return false;
+        }
+        
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        uint32_t elapsed = now - g_state.last_command_time;
+        
+        if (elapsed >= timeout_ms) {
+            g_state.voice_active = false;
+            timeout = true;
+        }
+        xSemaphoreGive(g_state_mutex);
     }
     
-    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    uint32_t elapsed = now - g_state.last_command_time;
-    
-    if (elapsed >= timeout_ms) {
-        g_state.voice_active = false;
-        return true;
-    }
-    
-    return false;
+    return timeout;
 }
 
 int command_handler_apply_scene(int scene_id)
