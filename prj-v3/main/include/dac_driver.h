@@ -35,7 +35,7 @@
  * @brief DAC 配置参数
  */
 typedef struct {
-    i2s_port_t i2s_port;         /* I2S 端口号 (建议 I2S_NUM_1) */
+    int i2s_port;                /* I2S 端口号 (建议 I2S_NUM_1) */
     int bclk_gpio;               /* BCLK GPIO */
     int ws_gpio;                 /* WS (LRCK) GPIO */
     int data_out_gpio;           /* DATA OUT GPIO */
@@ -119,6 +119,6 @@ void dac_set_playback_callback(dac_playback_callback_t callback, void *user_data
  * @brief 获取 DAC 的 I2S 端口号 (用于 AEC Reference)
  * @return I2S 端口号
  */
-i2s_port_t dac_get_i2s_port(void);
+int dac_get_i2s_port(void);
 
 #endif /* DAC_DRIVER_H */

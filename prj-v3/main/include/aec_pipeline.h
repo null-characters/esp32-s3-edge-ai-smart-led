@@ -87,4 +87,21 @@ void aec_pipeline_set_enable(bool enable);
  */
 int aec_pipeline_get_frame_size(void);
 
+/**
+ * @brief 设置延迟补偿帧数
+ * @param delay_frames 延迟帧数 (0-6)
+ */
+void aec_pipeline_set_delay(int delay_frames);
+
+/**
+ * @brief 获取延迟补偿帧数
+ * @return 延迟帧数
+ */
+int aec_pipeline_get_delay(void);
+
+/**
+ * @brief 重置 AEC 状态
+ */
+void aec_pipeline_reset(void);
+
 #endif /* AEC_PIPELINE_H */

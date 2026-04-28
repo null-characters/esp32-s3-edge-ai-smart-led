@@ -18,7 +18,7 @@ static const char *TAG = "DAC_DRIVER";
 
 typedef struct {
     bool initialized;
-    i2s_port_t i2s_port;
+    int i2s_port;
     i2s_chan_handle_t tx_handle;
     uint8_t volume;
     bool playing;
@@ -262,7 +262,7 @@ void dac_set_playback_callback(dac_playback_callback_t callback, void *user_data
     g_dac.user_data = user_data;
 }
 
-i2s_port_t dac_get_i2s_port(void)
+int dac_get_i2s_port(void)
 {
     return g_dac.i2s_port;
 }

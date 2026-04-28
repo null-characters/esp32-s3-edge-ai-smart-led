@@ -45,9 +45,9 @@ typedef struct {
     
     /* 同步 */
     SemaphoreHandle_t mutex;
-} env_state_t;
+} env_watcher_state_t;
 
-static env_state_t g_env = {0};
+static env_watcher_state_t g_env = {0};
 
 /* ================================================================
  * 内部函数

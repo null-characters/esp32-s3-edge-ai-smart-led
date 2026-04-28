@@ -66,7 +66,7 @@ esp_err_t audio_router_init(const audio_router_config_t *config)
     }
     
     g_router.current_target = AUDIO_ROUTE_TFLM;  /* 默认路由到 TFLM */
-    g_router.vad_state = VAD_STATE_SILENCE;
+    g_router.vad_state = VAD_SILENCE;
     g_router.esp_sr_count = 0;
     g_router.tflm_count = 0;
     
@@ -102,7 +102,7 @@ audio_route_target_t audio_router_route(const int16_t *samples, int len)
     /* 根据 VAD 状态决定路由 */
     audio_route_target_t target;
     
-    if (g_router.vad_state == VAD_STATE_VOICE) {
+    if (g_router.vad_state == VAD_SPEECH) {
         target = AUDIO_ROUTE_ESP_SR;
     } else {
         target = AUDIO_ROUTE_TFLM;

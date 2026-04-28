@@ -49,6 +49,12 @@ esp_err_t tts_engine_init(const tts_config_t *config);
 void tts_engine_deinit(void);
 
 /**
+ * @brief 启动 TTS 播放任务 (异步播放需要)
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_engine_start(void);
+
+/**
  * @brief 播放文本 (异步)
  * @param text 要播放的文本
  * @return ESP_OK 成功
@@ -64,10 +70,12 @@ esp_err_t tts_speak_blocking(const char *text);
 
 /**
  * @brief 播放场景状态
- * @param scene 场景配置
+ * @param name 场景名称
+ * @param brightness 亮度值
+ * @param color_temp 色温值
  * @return ESP_OK 成功
  */
-esp_err_t tts_speak_scene_status(const scene_config_t *scene);
+esp_err_t tts_speak_scene_status(const char *name, uint8_t brightness, uint16_t color_temp);
 
 /**
  * @brief 播放亮度状态
@@ -82,6 +90,38 @@ esp_err_t tts_speak_brightness(uint8_t brightness);
  * @return ESP_OK 成功
  */
 esp_err_t tts_speak_mode(bool is_auto);
+
+/**
+ * @brief 播放电源状态
+ * @param power_on 是否开机
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_speak_power(bool power_on);
+
+/**
+ * @brief 播放色温状态
+ * @param color_temp 色温值 (K)
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_speak_color_temp(uint16_t color_temp);
+
+/**
+ * @brief 播放问候语
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_speak_greeting(void);
+
+/**
+ * @brief 播放确认语
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_speak_confirm(void);
+
+/**
+ * @brief 播放错误提示
+ * @return ESP_OK 成功
+ */
+esp_err_t tts_speak_error(void);
 
 /**
  * @brief 停止播放
@@ -101,5 +141,17 @@ bool tts_is_playing(void);
  * @param user_data 用户数据
  */
 void tts_set_callback(tts_complete_callback_t callback, void *user_data);
+
+/**
+ * @brief 设置语音速度
+ * @param speed 速度值 (0-5, 0 最慢, 5 最快)
+ */
+void tts_set_speed(unsigned int speed);
+
+/**
+ * @brief 获取语音速度
+ * @return 当前速度值
+ */
+unsigned int tts_get_speed(void);
 
 #endif /* TTS_ENGINE_H */

@@ -5,6 +5,7 @@
 
 #include "command_handler.h"
 #include "led_pwm.h"
+#include "tts_engine.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -312,6 +313,74 @@ static command_result_t handle_mode_command(int command_id)
     return CMD_RESULT_OK;
 }
 
+/**
+ * @brief 处理状态查询命令
+ */
+static command_result_t handle_query_command(int command_id)
+{
+    light_control_t current_light;
+    system_mode_t current_mode;
+    
+    /* 获取当前状态 (mutex 保护) */
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        current_light = g_state.light;
+        current_mode = g_state.mode;
+        xSemaphoreGive(g_state_mutex);
+    } else {
+        return CMD_RESULT_FAILED;
+    }
+    
+    ESP_LOGI(TAG, "查询命令: ID=%d", command_id);
+    
+    /* 根据查询类型进行 TTS 回复 */
+    switch (command_id) {
+        case CMD_QUERY_ALL:
+            /* 查询所有状态 */
+            {
+                char text[64];
+                snprintf(text, sizeof(text), "当前亮度%d%%，色温%dK",
+                         current_light.brightness, current_light.color_temp);
+                tts_speak(text);
+            }
+            break;
+            
+        case CMD_QUERY_BRIGHTNESS:
+            /* 查询亮度 */
+            tts_speak_brightness(current_light.brightness);
+            break;
+            
+        case CMD_QUERY_CCT:
+            /* 查询色温 */
+            tts_speak_color_temp(current_light.color_temp);
+            break;
+            
+        case CMD_QUERY_MODE:
+            /* 查询模式 */
+            tts_speak_mode(current_mode == MODE_AUTO);
+            break;
+            
+        case CMD_QUERY_SCENE:
+            /* 查询场景 */
+            {
+                int scene_id = g_state.current_scene;
+                const scene_preset_t *scene = command_handler_get_scene_preset(scene_id);
+                if (scene) {
+                    tts_speak_scene_status(scene->name, scene->params.brightness, scene->params.color_temp);
+                } else {
+                    tts_speak("当前无场景");
+                }
+            }
+            break;
+            
+        default:
+            /* 其他查询命令 */
+            tts_speak_confirm();
+            break;
+    }
+    
+    return CMD_RESULT_OK;
+}
+
 /* ================================================================
  * 公共 API
  * ================================================================ */
@@ -370,8 +439,8 @@ command_result_t command_handler_process(int command_id)
             result = handle_mode_command(command_id);
             break;
         case CMD_CATEGORY_QUERY:
-            /* TODO: 实现 TTS 回复 */
-            ESP_LOGI(TAG, "查询命令: ID=%d", command_id);
+            /* 状态查询，TTS 回复 */
+            handle_query_command(command_id);
             break;
         case CMD_CATEGORY_CANCEL:
             if (command_id == CMD_RESTORE_AUTO) {
