@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "command_words.h"
+#include "priority_arbiter.h"  /* 引入 system_mode_t 定义 */
 
 /* ================================================================
  * 控制参数结构
@@ -37,15 +38,6 @@ typedef struct {
 /* ================================================================
  * 系统状态结构
  * ================================================================ */
-
-/**
- * @brief 系统运行模式
- */
-typedef enum {
-    MODE_AUTO,      /* 自动模式 (AI 控制) */
-    MODE_MANUAL,    /* 手动模式 (用户控制) */
-    MODE_VOICE,     /* 语音模式 (语音命令控制) */
-} system_mode_t;
 
 /**
  * @brief 系统状态

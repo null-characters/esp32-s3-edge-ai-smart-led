@@ -34,8 +34,9 @@ typedef enum {
  */
 typedef enum {
     MODE_AUTO = 0,      /* 自动模式: 雷达+TFLM 控制 */
-    MODE_MANUAL = 1,    /* 手动模式: 语音命令控制 */
-    MODE_SLEEP = 2,     /* 睡眠模式: 低功耗待机 */
+    MODE_MANUAL = 1,    /* 手动模式: 用户手动控制 */
+    MODE_VOICE = 2,     /* 语音模式: 语音命令控制 */
+    MODE_SLEEP = 3,     /* 睡眠模式: 低功耗待机 */
 } system_mode_t;
 
 /**
