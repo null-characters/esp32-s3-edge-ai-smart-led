@@ -4,6 +4,7 @@
  */
 
 #include "wifi_sta.h"
+#include "status_led.h"
 #include <string.h>
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -40,6 +41,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                 ESP_LOGI(TAG, "Wi-Fi STA started");
                 esp_wifi_connect();
                 g_wifi_state = WIFI_STA_CONNECTING;
+                status_led_update_wifi(WIFI_STA_CONNECTING);
                 break;
 
             case WIFI_EVENT_STA_CONNECTED:
@@ -50,6 +52,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             case WIFI_EVENT_STA_DISCONNECTED:
                 ESP_LOGW(TAG, "Wi-Fi disconnected");
                 g_wifi_state = WIFI_STA_DISCONNECTED;
+                status_led_update_wifi(WIFI_STA_DISCONNECTED);
                 
                 if (g_disconnected_cb) {
                     g_disconnected_cb();
@@ -61,9 +64,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                     esp_wifi_connect();
                     g_retry_count++;
                     g_wifi_state = WIFI_STA_CONNECTING;
+                    status_led_update_wifi(WIFI_STA_CONNECTING);
                 } else {
                     ESP_LOGE(TAG, "Wi-Fi connection failed after %d retries", WIFI_MAX_RETRY);
                     g_wifi_state = WIFI_STA_FAILED;
+                    status_led_update_wifi(WIFI_STA_FAILED);
                     xEventGroupSetBits(g_wifi_event_group, WIFI_DISCONNECTED_BIT);
                 }
                 break;
@@ -78,6 +83,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             g_wifi_state = WIFI_STA_CONNECTED;
             g_retry_count = 0;
             xEventGroupSetBits(g_wifi_event_group, WIFI_CONNECTED_BIT);
+            status_led_update_wifi(WIFI_STA_CONNECTED);
             
             if (g_connected_cb) {
                 g_connected_cb();

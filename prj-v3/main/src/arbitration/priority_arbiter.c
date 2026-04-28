@@ -6,6 +6,7 @@
  */
 
 #include "priority_arbiter.h"
+#include "status_led.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -364,6 +365,9 @@ esp_err_t priority_arbiter_set_mode(system_mode_t mode)
     if (g_arbiter.config.persist_state) {
         save_state_to_nvs(mode);
     }
+    
+    /* 更新状态指示灯 */
+    status_led_update_mode(mode);
     
     ESP_LOGI(TAG, "模式切换: %d", mode);
     

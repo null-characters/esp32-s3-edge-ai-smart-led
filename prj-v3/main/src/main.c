@@ -11,6 +11,7 @@
 #include "uart_driver.h"
 #include "i2s_driver.h"
 #include "wifi_sta.h"
+#include "status_led.h"
 
 static const char *TAG = "MAIN";
 
@@ -34,9 +35,20 @@ void app_main(void)
     ESP_LOGI(TAG, "=== prj-v3: Voice Interaction Smart LED Gateway ===");
     ESP_LOGI(TAG, "ESP-IDF Version: %s", esp_get_idf_version());
 
+    /* 0. 初始化状态指示灯 (最先初始化，显示启动状态) */
+    ESP_LOGI(TAG, "Initializing status LED...");
+    esp_err_t ret = status_led_init(NULL);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Status LED init failed: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Status LED initialized (booting...)");
+        status_led_set_state(STATUS_LED_BOOTING);
+        status_led_start();
+    }
+
     /* 1. 初始化 LED PWM 驱动 */
     ESP_LOGI(TAG, "Initializing LED PWM driver...");
-    esp_err_t ret = led_pwm_init();
+    ret = led_pwm_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LED PWM init failed: %s", esp_err_to_name(ret));
     } else {
@@ -66,6 +78,7 @@ void app_main(void)
 
     /* 4. 初始化 Wi-Fi STA */
     ESP_LOGI(TAG, "Initializing Wi-Fi STA...");
+    status_led_set_state(STATUS_LED_WIFI_CONNECTING);
     my_wifi_sta_register_cb(on_wifi_connected, on_wifi_disconnected);
     ret = my_wifi_sta_init(WIFI_SSID, WIFI_PASSWORD);
     if (ret != ESP_OK) {
@@ -82,8 +95,9 @@ void app_main(void)
         }
     }
 
-    /* 5. 主循环 */
+    /* 5. 初始化完成，切换到自动模式 */
     ESP_LOGI(TAG, "=== System initialized, entering main loop ===");
+    status_led_set_state(STATUS_LED_MODE_AUTO);
     
     uint32_t loop_count = 0;
     while (1) {

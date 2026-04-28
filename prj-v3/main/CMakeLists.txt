@@ -5,6 +5,9 @@ idf_component_register(
          "src/drivers/uart_driver.c"
          "src/drivers/i2s_driver.c"
          "src/drivers/dac_driver.c"
+         "src/drivers/ws2812_driver.c"
+         # 状态指示灯
+         "src/led/status_led.c"
          # 网络层
          "src/network/wifi_sta.c"
          # 多模态推理
@@ -47,6 +50,7 @@ idf_component_register(
                  "src/arbitration"
                  "src/control"
                  "src/voice"
+                 "src/led"
                  "test"
-    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_driver_i2s esp_driver_uart esp_driver_ledc spiffs espressif__esp-sr
+    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_driver_i2s esp_driver_uart esp_driver_ledc esp_driver_rmt spiffs espressif__esp-sr
 )
