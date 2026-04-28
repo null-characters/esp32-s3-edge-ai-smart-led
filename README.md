@@ -53,7 +53,7 @@ prj-v3/
 │   ├── src/
 │   │   ├── main.c              # 应用入口
 │   │   ├── voice/              # 语音交互模块
-│   │   │   ├── wake_word.c     # 唤醒词处理（"小白网关"）
+│   │   │   ├── wake_word.c     # 唤醒词处理（"小白小白"）
 │   │   │   ├── aec_pipeline.c  # AEC 回声消除 (ESP-SR)
 │   │   │   ├── tts_engine.c    # TTS 语音合成 (ESP-SR)
 │   │   │   ├── vad_detector.c  # VAD 语音活动检测 (ESP-SR)
