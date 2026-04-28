@@ -9,7 +9,9 @@
 
 /* ESP-SR MultiNet 头文件 (ESP32-S3) */
 #include "esp_mn_iface.h"
-#include "esp32s3/esp_mn_models.h"
+#include "esp_mn_models.h"
+#include "esp_mn_speech_commands.h"
+#include "command_words.h"
 
 static const char *TAG = "VOICE_CMD";
 
@@ -110,10 +112,53 @@ int voice_commands_add_phrase(int command_id, const char *phrase)
         return -1;
     }
     
-    /* TODO: 使用 MultiNet 的 set_speech_commands API */
-    ESP_LOGD(TAG, "添加命令词: ID=%d, 短语=%s", command_id, phrase);
+    /* 使用 ESP-SR 命令词 API */
+    esp_err_t ret = esp_mn_commands_add(command_id, phrase);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "添加命令词失败: ID=%d, 短语=%s, 错误=%d", command_id, phrase, ret);
+        return -2;
+    }
     
+    ESP_LOGD(TAG, "添加命令词成功: ID=%d, 短语=%s", command_id, phrase);
     return 0;
+}
+
+int voice_commands_register_all(void)
+{
+    if (!g_state.initialized) {
+        return -1;
+    }
+    
+    ESP_LOGI(TAG, "注册所有命令词 (%d 条)", COMMAND_WORDS_COUNT);
+    
+    /* 分配命令词链表 */
+    esp_err_t ret = esp_mn_commands_alloc(g_state.multinet, g_state.model_data);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "分配命令词链表失败: %d", ret);
+        return -2;
+    }
+    
+    /* 注册所有命令词 */
+    int success_count = 0;
+    for (size_t i = 0; i < COMMAND_WORDS_COUNT; i++) {
+        ret = esp_mn_commands_add(g_command_words[i].command_id, 
+                                   g_command_words[i].phrase);
+        if (ret == ESP_OK) {
+            success_count++;
+        } else {
+            ESP_LOGW(TAG, "注册命令词失败: %s", g_command_words[i].desc);
+        }
+    }
+    
+    /* 更新语言模型 */
+    esp_mn_error_t *error = esp_mn_commands_update();
+    if (error) {
+        ESP_LOGW(TAG, "部分命令词无法解析");
+        esp_mn_active_commands_print();
+    }
+    
+    ESP_LOGI(TAG, "命令词注册完成: 成功 %d/%d", success_count, COMMAND_WORDS_COUNT);
+    return success_count;
 }
 
 int voice_commands_clear_phrases(void)

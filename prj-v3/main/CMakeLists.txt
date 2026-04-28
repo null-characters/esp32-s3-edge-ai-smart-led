@@ -5,8 +5,10 @@ idf_component_register(
          "src/drivers/i2s_driver.c"
          "src/network/wifi_sta.c"
          "src/multimodal/tflm_allocator.c"
+         "src/multimodal/model_loader.c"
          "src/radar/ld2410_driver.c"
          "src/audio/mfcc.c"
+         "src/audio/audio_afe.c"
          "src/voice/wake_word.c"
          "src/voice/command_handler.c"
          "src/voice/voice_commands.c"
@@ -16,6 +18,7 @@ idf_component_register(
          "test/test_mfcc.c"
          "test/test_wake_word.c"
          "test/test_command_handler.c"
+         "test/test_model_loader.c"
     INCLUDE_DIRS "include"
                  "src/drivers"
                  "src/network"
@@ -24,5 +27,5 @@ idf_component_register(
                  "src/audio"
                  "src/voice"
                  "test"
-    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_driver_i2s esp_driver_uart esp_driver_ledc
+    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_driver_i2s esp_driver_uart esp_driver_ledc spiffs
 )

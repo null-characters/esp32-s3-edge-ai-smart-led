@@ -79,6 +79,12 @@ int voice_commands_add_phrase(int command_id, const char *phrase);
 int voice_commands_clear_phrases(void);
 
 /**
+ * @brief 注册所有预定义命令词 (50+ 条)
+ * @return 成功注册的命令词数量, <0 失败
+ */
+int voice_commands_register_all(void);
+
+/**
  * @brief 设置识别阈值
  * @param threshold 阈值 (0.0 - 1.0)
  */
