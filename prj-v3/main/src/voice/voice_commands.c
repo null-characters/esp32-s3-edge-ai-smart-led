@@ -106,6 +106,27 @@ int voice_commands_stop(void)
     return 0;
 }
 
+void voice_commands_deinit(void)
+{
+    if (!g_state.initialized) {
+        return;
+    }
+    
+    g_state.running = false;
+    
+    /* 释放 MultiNet 资源 */
+    if (g_state.model_data && g_state.multinet) {
+        g_state.multinet->destroy(g_state.model_data);
+        g_state.model_data = NULL;
+    }
+    
+    /* 清理命令词链表 */
+    esp_mn_commands_free();
+    
+    g_state.initialized = false;
+    ESP_LOGI(TAG, "语音命令模块已释放");
+}
+
 int voice_commands_add_phrase(int command_id, const char *phrase)
 {
     if (!g_state.initialized || !phrase) {

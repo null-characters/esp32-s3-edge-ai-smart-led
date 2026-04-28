@@ -4,6 +4,7 @@
  */
 
 #include "command_handler.h"
+#include "led_pwm.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include <string.h>
@@ -77,10 +78,17 @@ static int execute_light_control(const light_control_t *params)
         return -1;
     }
     
+    /* 调用实际硬件驱动 */
+    if (params->main_light_on) {
+        led_set_brightness(params->brightness);
+        led_set_color_temp(params->color_temp);
+    } else {
+        led_set_brightness(0);
+    }
+    
     /* 更新状态 */
     memcpy(&g_state.light, params, sizeof(light_control_t));
     
-    /* TODO: 调用实际硬件驱动 */
     ESP_LOGI(TAG, "灯光控制: 亮度=%d%%, 色温=%dK, 主灯=%s, 辅助灯=%s",
              params->brightness, params->color_temp,
              params->main_light_on ? "开" : "关",

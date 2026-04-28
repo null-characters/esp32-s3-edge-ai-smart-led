@@ -137,6 +137,23 @@ static void afe_result_handler(const audio_afe_result_t *result, void *user_data
             if (!result->is_speech) {
                 /* 语音结束，处理命令 */
                 ESP_LOGD(TAG, "语音结束，处理命令");
+                
+                /* 获取命令识别结果 */
+                const voice_command_result_t *cmd_result = voice_commands_get_result();
+                if (cmd_result && cmd_result->command_id > 0) {
+                    ESP_LOGI(TAG, "执行命令: ID=%d, 置信度=%.2f", 
+                             cmd_result->command_id, cmd_result->confidence);
+                    
+                    /* 执行命令 */
+                    command_handler_process(cmd_result->command_id);
+                    
+                    /* 发送命令事件 */
+                    send_event(AUDIO_EVENT_COMMAND, 0, cmd_result->command_id,
+                              cmd_result->phrase, result->volume);
+                    
+                    g_pipe.command_count++;
+                }
+                
                 g_pipe.state = STATE_IDLE;
                 send_event(AUDIO_EVENT_VAD_SILENCE, 0, 0, NULL, result->volume);
             }

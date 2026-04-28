@@ -41,7 +41,11 @@ esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
     chan_conf.dma_desc_num = DMA_BUF_COUNT;
     chan_conf.dma_frame_num = DMA_BUF_SIZE;
     
-    ESP_ERROR_CHECK(i2s_new_channel(&chan_conf, NULL, &g_rx_handle));
+    esp_err_t ret = i2s_new_channel(&chan_conf, NULL, &g_rx_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "创建 I2S 通道失败: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     // 配置标准模式
     i2s_std_config_t std_conf = {
@@ -72,8 +76,21 @@ esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
         },
     };
 
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(g_rx_handle, &std_conf));
-    ESP_ERROR_CHECK(i2s_channel_enable(g_rx_handle));
+    ret = i2s_channel_init_std_mode(g_rx_handle, &std_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "初始化 I2S 标准模式失败: %s", esp_err_to_name(ret));
+        i2s_del_channel(g_rx_handle);
+        g_rx_handle = NULL;
+        return ret;
+    }
+    
+    ret = i2s_channel_enable(g_rx_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "启用 I2S 通道失败: %s", esp_err_to_name(ret));
+        i2s_del_channel(g_rx_handle);
+        g_rx_handle = NULL;
+        return ret;
+    }
 
     ESP_LOGI(TAG, "I2S initialized: rate=%luHz, bits=%d, ws=%d, sd=%d, clk=%d", 
              sample_rate, bits_per_sample, I2S_WS_GPIO, I2S_SD_GPIO, I2S_CLK_GPIO);
@@ -109,8 +126,15 @@ esp_err_t i2s_deinit(void)
         return ESP_OK;
     }
 
-    ESP_ERROR_CHECK(i2s_channel_disable(g_rx_handle));
-    ESP_ERROR_CHECK(i2s_del_channel(g_rx_handle));
+    esp_err_t ret = i2s_channel_disable(g_rx_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "禁用 I2S 通道失败: %s", esp_err_to_name(ret));
+    }
+    
+    ret = i2s_del_channel(g_rx_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "删除 I2S 通道失败: %s", esp_err_to_name(ret));
+    }
     g_rx_handle = NULL;
 
     ESP_LOGI(TAG, "I2S deinitialized");

@@ -227,10 +227,13 @@ error:
         g_state.afe_iface->destroy(g_state.afe_data);
     }
     if (g_state.afe_cfg) {
+        if (g_state.afe_cfg->wakenet_model_name) {
+            free(g_state.afe_cfg->wakenet_model_name);
+        }
         afe_config_free(g_state.afe_cfg);
     }
     if (g_state.models) {
-        free(g_state.models);
+        esp_srmodel_deinit(g_state.models);
     }
     if (g_state.audio_buffer) {
         free(g_state.audio_buffer);
@@ -256,6 +259,11 @@ void audio_afe_deinit(void)
     }
     
     if (g_state.afe_cfg) {
+        /* 释放 strdup 分配的内存 */
+        if (g_state.afe_cfg->wakenet_model_name) {
+            free(g_state.afe_cfg->wakenet_model_name);
+            g_state.afe_cfg->wakenet_model_name = NULL;
+        }
         afe_config_free(g_state.afe_cfg);
     }
     

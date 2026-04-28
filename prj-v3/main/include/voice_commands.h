@@ -65,6 +65,11 @@ int voice_commands_start(void);
 int voice_commands_stop(void);
 
 /**
+ * @brief 释放语音命令模块
+ */
+void voice_commands_deinit(void);
+
+/**
  * @brief 添加自定义命令词
  * @param command_id 命令 ID
  * @param phrase 命令词拼音
