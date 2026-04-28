@@ -55,22 +55,31 @@ static env_watcher_state_t g_env = {0};
 
 static void check_timer_callback(void *arg)
 {
-    if (!g_env.running) {
+    /* 使用非阻塞获取，定时器回调中不应阻塞 */
+    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(5)) != pdTRUE) {
         return;
     }
     
-    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    if (!g_env.running) {
+        xSemaphoreGive(g_env.mutex);
+        return;
+    }
     
     uint64_t now_us = esp_timer_get_time();
     
     /* 检查雷达数据是否过期 */
-    if (now_us - g_env.radar_update_time_us > g_env.check_interval_ms * 2000) {
+    if (now_us - g_env.radar_update_time_us > (uint64_t)g_env.check_interval_ms * 2000ULL) {
         /* 雷达数据超过 2 个检查周期未更新，视为无人 */
         g_env.radar_presence = false;
     }
     
     /* 更新环境状态 */
     env_state_t new_state = g_env.radar_presence ? ENV_STATE_OCCUPIED : ENV_STATE_EMPTY;
+    
+    /* 提取回调信息，在锁外调用 */
+    env_change_callback_t callback = NULL;
+    void *user_data = NULL;
+    bool trigger_callback = false;
     
     if (new_state != g_env.current_state) {
         /* 状态变化 */
@@ -93,14 +102,19 @@ static void check_timer_callback(void *arg)
         if (g_env.absent_ms >= g_env.absent_threshold_ms) {
             ESP_LOGI(TAG, "人离开超过阈值: %lu 分钟", g_env.absent_ms / 60000);
             
-            /* 触发回调 */
-            if (g_env.callback) {
-                g_env.callback(ENV_STATE_EMPTY, g_env.absent_ms, g_env.user_data);
-            }
+            /* 准备回调信息 */
+            callback = g_env.callback;
+            user_data = g_env.user_data;
+            trigger_callback = true;
         }
     }
     
     xSemaphoreGive(g_env.mutex);
+    
+    /* 在锁外调用回调，避免死锁 */
+    if (trigger_callback && callback) {
+        callback(ENV_STATE_EMPTY, g_env.absent_ms, user_data);
+    }
 }
 
 /* ================================================================
@@ -180,7 +194,7 @@ void env_watcher_deinit(void)
         vSemaphoreDelete(g_env.mutex);
     }
     
-    memset(&g_env, 0, sizeof(env_state_t));
+    memset(&g_env, 0, sizeof(env_watcher_state_t));
     ESP_LOGI(TAG, "环境监听已释放");
 }
 
@@ -245,16 +259,38 @@ esp_err_t env_watcher_update_radar(bool presence, float distance, float energy)
 
 env_state_t env_watcher_get_state(void)
 {
-    return g_env.current_state;
+    if (!g_env.initialized) {
+        return ENV_STATE_UNKNOWN;
+    }
+    
+    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    env_state_t state = g_env.current_state;
+    xSemaphoreGive(g_env.mutex);
+    
+    return state;
 }
 
 uint32_t env_watcher_get_absent_time_ms(void)
 {
-    return g_env.absent_ms;
+    if (!g_env.initialized) {
+        return 0;
+    }
+    
+    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    uint32_t absent_ms = g_env.absent_ms;
+    xSemaphoreGive(g_env.mutex);
+    
+    return absent_ms;
 }
 
 void env_watcher_set_callback(env_change_callback_t callback, void *user_data)
 {
+    if (!g_env.initialized) {
+        return;
+    }
+    
+    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
     g_env.callback = callback;
     g_env.user_data = user_data;
+    xSemaphoreGive(g_env.mutex);
 }

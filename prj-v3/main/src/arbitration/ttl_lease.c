@@ -37,13 +37,6 @@ static int64_t get_time_us(void)
     return esp_timer_get_time();
 }
 
-static void trigger_release_callback(lease_release_reason_t reason)
-{
-    if (g_ttl.lease.on_release) {
-        g_ttl.lease.on_release(reason, g_ttl.lease.user_data);
-    }
-}
-
 /* ================================================================
  * 公共 API
  * ================================================================ */
@@ -154,11 +147,18 @@ esp_err_t ttl_lease_release(lease_release_reason_t reason)
     g_ttl.lease.state = LEASE_STATE_RELEASED;
     g_ttl.lease.release_reason = reason;
     
+    /* 提取回调信息，在锁外调用避免死锁 */
+    lease_release_callback_t callback = g_ttl.lease.on_release;
+    void *user_data = g_ttl.lease.user_data;
+    
     ESP_LOGI(TAG, "释放租约: reason=%d", reason);
     
-    trigger_release_callback(reason);
-    
     xSemaphoreGive(g_ttl.mutex);
+    
+    /* 在锁外调用回调 */
+    if (callback) {
+        callback(reason, user_data);
+    }
     
     return ESP_OK;
 }
@@ -176,6 +176,12 @@ bool ttl_lease_check_expired(void)
         return false;
     }
     
+    /* 提取回调信息 */
+    lease_release_callback_t callback = g_ttl.lease.on_release;
+    void *user_data = g_ttl.lease.user_data;
+    bool expired = false;
+    lease_release_reason_t reason = LEASE_RELEASE_NONE;
+    
     /* 检查 TTL 过期 */
     int64_t elapsed_ms = (get_time_us() - g_ttl.lease.start_time_us) / 1000;
     
@@ -185,33 +191,40 @@ bool ttl_lease_check_expired(void)
         
         g_ttl.lease.state = LEASE_STATE_EXPIRED;
         g_ttl.lease.release_reason = LEASE_RELEASE_TTL_EXPIRED;
-        
-        trigger_release_callback(LEASE_RELEASE_TTL_EXPIRED);
-        
-        xSemaphoreGive(g_ttl.mutex);
-        return true;
+        reason = LEASE_RELEASE_TTL_EXPIRED;
+        expired = true;
     }
-    
     /* 检查环境变化释放 */
-    if (g_ttl.env_absent && g_ttl.env_absent_ms >= TTL_ENV_EXIT_MS) {
+    else if (g_ttl.env_absent && g_ttl.env_absent_ms >= TTL_ENV_EXIT_MS) {
         ESP_LOGI(TAG, "环境变化释放: absent=%lu 分钟", g_ttl.env_absent_ms / 60000);
         
         g_ttl.lease.state = LEASE_STATE_RELEASED;
         g_ttl.lease.release_reason = LEASE_RELEASE_ENV_CHANGE;
-        
-        trigger_release_callback(LEASE_RELEASE_ENV_CHANGE);
-        
-        xSemaphoreGive(g_ttl.mutex);
-        return true;
+        reason = LEASE_RELEASE_ENV_CHANGE;
+        expired = true;
     }
     
     xSemaphoreGive(g_ttl.mutex);
-    return false;
+    
+    /* 在锁外调用回调 */
+    if (expired && callback) {
+        callback(reason, user_data);
+    }
+    
+    return expired;
 }
 
 lease_state_t ttl_lease_get_state(void)
 {
-    return g_ttl.lease.state;
+    if (!g_ttl.initialized) {
+        return LEASE_STATE_INACTIVE;
+    }
+    
+    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    lease_state_t state = g_ttl.lease.state;
+    xSemaphoreGive(g_ttl.mutex);
+    
+    return state;
 }
 
 int64_t ttl_lease_get_remaining_ms(void)
@@ -232,13 +245,27 @@ int64_t ttl_lease_get_remaining_ms(void)
 
 lease_release_reason_t ttl_lease_get_release_reason(void)
 {
-    return g_ttl.lease.release_reason;
+    if (!g_ttl.initialized) {
+        return LEASE_RELEASE_NONE;
+    }
+    
+    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    lease_release_reason_t reason = g_ttl.lease.release_reason;
+    xSemaphoreGive(g_ttl.mutex);
+    
+    return reason;
 }
 
 void ttl_lease_set_callback(lease_release_callback_t callback, void *user_data)
 {
+    if (!g_ttl.initialized) {
+        return;
+    }
+    
+    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
     g_ttl.lease.on_release = callback;
     g_ttl.lease.user_data = user_data;
+    xSemaphoreGive(g_ttl.mutex);
 }
 
 esp_err_t ttl_lease_notify_env_change(uint32_t absent_ms)

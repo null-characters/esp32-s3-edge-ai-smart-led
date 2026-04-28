@@ -221,7 +221,15 @@ esp_err_t vad_detector_process(const int16_t *samples, vad_result_t *result)
 
 vad_state_t vad_detector_get_state(void)
 {
-    return g_vad.current_state;
+    if (!g_vad.initialized) {
+        return VAD_SILENCE;
+    }
+    
+    xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
+    vad_state_t state = g_vad.current_state;
+    xSemaphoreGive(g_vad.mutex);
+    
+    return state;
 }
 
 void vad_detector_reset(void)
@@ -283,16 +291,30 @@ void vad_detector_set_mode(vad_mode_t mode)
 
 void vad_detector_set_energy_threshold(float threshold)
 {
+    if (!g_vad.initialized) {
+        return;
+    }
+    
+    xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
     g_vad.config.energy_threshold = threshold;
+    xSemaphoreGive(g_vad.mutex);
+    
     ESP_LOGI(TAG, "能量阈值设置为 %.1f", threshold);
 }
 
 void vad_detector_set_hangover(int frames)
 {
+    if (!g_vad.initialized) {
+        return;
+    }
+    
     if (frames < 0) frames = 0;
     if (frames > 20) frames = 20;
     
+    xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
     g_vad.config.hangover_frames = frames;
+    xSemaphoreGive(g_vad.mutex);
+    
     ESP_LOGI(TAG, "拖尾帧数设置为 %d", frames);
 }
 
@@ -316,13 +338,17 @@ uint32_t vad_detector_get_speech_duration_ms(void)
         return 0;
     }
     
+    xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
+    
     /* ESP-SR VAD 内部追踪语音时长 */
-    vad_trigger_t *trigger = g_vad.vad_handle->trigger;
-    if (trigger) {
-        return trigger->speech_len * VAD_FRAME_LENGTH_MS;
+    uint32_t duration_ms = 0;
+    if (g_vad.vad_handle && g_vad.vad_handle->trigger) {
+        duration_ms = g_vad.vad_handle->trigger->speech_len * VAD_FRAME_LENGTH_MS;
     }
     
-    return 0;
+    xSemaphoreGive(g_vad.mutex);
+    
+    return duration_ms;
 }
 
 void vad_detector_print_stats(void)
@@ -330,6 +356,8 @@ void vad_detector_print_stats(void)
     if (!g_vad.initialized) {
         return;
     }
+    
+    xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
     
     ESP_LOGI(TAG, "VAD 状态: %s", g_vad.current_state == VAD_SPEECH ? "人声" : "静音");
     ESP_LOGI(TAG, "VAD 模式: %d, 拖尾帧: %d", g_vad.config.vad_mode, g_vad.config.hangover_frames);
@@ -339,4 +367,6 @@ void vad_detector_print_stats(void)
                  g_vad.vad_handle->trigger->speech_len,
                  g_vad.vad_handle->trigger->noise_len);
     }
+    
+    xSemaphoreGive(g_vad.mutex);
 }

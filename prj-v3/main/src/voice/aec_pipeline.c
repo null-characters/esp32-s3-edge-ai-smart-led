@@ -317,7 +317,15 @@ esp_err_t aec_pipeline_set_reference(const int16_t *ref_data, int len)
 
 bool aec_pipeline_is_enabled(void)
 {
-    return g_aec.enabled;
+    if (!g_aec.initialized) {
+        return false;
+    }
+    
+    xSemaphoreTake(g_aec.mutex, portMAX_DELAY);
+    bool enabled = g_aec.enabled;
+    xSemaphoreGive(g_aec.mutex);
+    
+    return enabled;
 }
 
 void aec_pipeline_set_enable(bool enable)
@@ -342,7 +350,15 @@ void aec_pipeline_set_delay(int delay_frames)
 
 int aec_pipeline_get_delay(void)
 {
-    return g_aec.ref_delay_frames;
+    if (!g_aec.initialized) {
+        return 0;
+    }
+    
+    xSemaphoreTake(g_aec.mutex, portMAX_DELAY);
+    int delay = g_aec.ref_delay_frames;
+    xSemaphoreGive(g_aec.mutex);
+    
+    return delay;
 }
 
 int aec_pipeline_get_frame_size(void)
@@ -350,7 +366,12 @@ int aec_pipeline_get_frame_size(void)
     if (!g_aec.initialized) {
         return AEC_FRAME_SIZE;
     }
-    return g_aec.frame_size;
+    
+    xSemaphoreTake(g_aec.mutex, portMAX_DELAY);
+    int size = g_aec.frame_size;
+    xSemaphoreGive(g_aec.mutex);
+    
+    return size;
 }
 
 void aec_pipeline_reset(void)

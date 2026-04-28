@@ -453,21 +453,45 @@ esp_err_t tts_stop(void)
 
 bool tts_is_playing(void)
 {
-    return g_tts.playing;
+    if (!g_tts.initialized) {
+        return false;
+    }
+    
+    xSemaphoreTake(g_tts.mutex, portMAX_DELAY);
+    bool playing = g_tts.playing;
+    xSemaphoreGive(g_tts.mutex);
+    
+    return playing;
 }
 
 void tts_set_speed(unsigned int speed)
 {
+    if (!g_tts.initialized) {
+        return;
+    }
+    
     if (speed > 5) {
         speed = 5;
     }
+    
+    xSemaphoreTake(g_tts.mutex, portMAX_DELAY);
     g_tts.speed = speed;
+    xSemaphoreGive(g_tts.mutex);
+    
     ESP_LOGI(TAG, "语音速度设置为 %d", speed);
 }
 
 unsigned int tts_get_speed(void)
 {
-    return g_tts.speed;
+    if (!g_tts.initialized) {
+        return TTS_DEFAULT_SPEED;
+    }
+    
+    xSemaphoreTake(g_tts.mutex, portMAX_DELAY);
+    unsigned int speed = g_tts.speed;
+    xSemaphoreGive(g_tts.mutex);
+    
+    return speed;
 }
 
 void tts_set_callback(tts_complete_callback_t callback, void *user_data)

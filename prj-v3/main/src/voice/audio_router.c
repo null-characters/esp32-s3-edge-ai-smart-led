@@ -132,7 +132,15 @@ audio_route_target_t audio_router_route(const int16_t *samples, int len)
 
 audio_route_target_t audio_router_get_target(void)
 {
-    return g_router.current_target;
+    if (!g_router.initialized) {
+        return AUDIO_ROUTE_NONE;
+    }
+    
+    xSemaphoreTake(g_router.mutex, portMAX_DELAY);
+    audio_route_target_t target = g_router.current_target;
+    xSemaphoreGive(g_router.mutex);
+    
+    return target;
 }
 
 esp_err_t audio_router_set_target(audio_route_target_t target)
@@ -152,15 +160,29 @@ esp_err_t audio_router_set_target(audio_route_target_t target)
 
 void audio_router_set_vad_state(vad_state_t state)
 {
+    if (!g_router.initialized) {
+        return;
+    }
+    
+    xSemaphoreTake(g_router.mutex, portMAX_DELAY);
     g_router.vad_state = state;
+    xSemaphoreGive(g_router.mutex);
 }
 
 void audio_router_get_stats(uint32_t *esp_sr_count, uint32_t *tflm_count)
 {
+    if (!g_router.initialized) {
+        if (esp_sr_count) *esp_sr_count = 0;
+        if (tflm_count) *tflm_count = 0;
+        return;
+    }
+    
+    xSemaphoreTake(g_router.mutex, portMAX_DELAY);
     if (esp_sr_count) {
         *esp_sr_count = g_router.esp_sr_count;
     }
     if (tflm_count) {
         *tflm_count = g_router.tflm_count;
     }
+    xSemaphoreGive(g_router.mutex);
 }
