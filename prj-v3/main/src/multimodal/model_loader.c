@@ -21,13 +21,13 @@ static const char *TAG = "MODEL_LOADER";
 #define MODEL_PATH_RADAR    "/spiffs/models/radar_analyzer.tflite"
 #define MODEL_PATH_FUSION   "/spiffs/models/fusion_model.tflite"
 
-/* 模型信息表 */
+/* 模型信息表 (INT8 量化模型) */
 static model_info_t g_models[MODEL_TYPE_MAX] = {
     [MODEL_TYPE_SOUND_CLASSIFIER] = {
         .type = MODEL_TYPE_SOUND_CLASSIFIER,
         .name = "sound_classifier",
         .path = MODEL_PATH_SOUND,
-        .size = 30 * 1024,  /* ~30KB */
+        .size = 12 * 1024,  /* 12KB (CNN) */
         .is_loaded = false,
         .data = NULL,
     },
@@ -35,7 +35,7 @@ static model_info_t g_models[MODEL_TYPE_MAX] = {
         .type = MODEL_TYPE_RADAR_ANALYZER,
         .name = "radar_analyzer",
         .path = MODEL_PATH_RADAR,
-        .size = 2 * 1024,   /* ~2KB */
+        .size = 4 * 1024,   /* 3.6KB (MLP) */
         .is_loaded = false,
         .data = NULL,
     },
@@ -43,7 +43,7 @@ static model_info_t g_models[MODEL_TYPE_MAX] = {
         .type = MODEL_TYPE_FUSION_MODEL,
         .name = "fusion_model",
         .path = MODEL_PATH_FUSION,
-        .size = 3 * 1024,   /* ~3KB */
+        .size = 5 * 1024,   /* 5KB (MLP) */
         .is_loaded = false,
         .data = NULL,
     },
