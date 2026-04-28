@@ -14,7 +14,7 @@ on:
 
 env:
   IDF_PATH: /opt/esp/idf
-  IDF_VERSION: v5.4
+  IDF_VERSION: v5.4.4
 
 jobs:
   build:

@@ -93,9 +93,9 @@ prj-v3/
 │   ├── espressif__esp-tflite-micro/  # TFLM 推理框架 ⭐
 │   └── espressif__esp-dsp/     # ESP-DSP 数字信号处理 ⭐
 ├── models/                     # AI 模型
-│   ├── sound_classifier.tflite # 声音分类器 (~30KB)
-│   ├── radar_analyzer.tflite   # 雷达分析器 (~2KB)
-│   ├── fusion_model.tflite     # 融合决策器 (~3KB)
+│   ├── sound_classifier.tflite # 声音分类器 (~12KB)
+│   ├── radar_analyzer.tflite   # 雷达分析器 (~4KB)
+│   ├── fusion_model.tflite     # 融合决策器 (~5KB)
 │   └── wake_word_model.bin     # 唤醒词模型 (ESP-SR)
 └── CMakeLists.txt
 ```
@@ -130,9 +130,9 @@ prj-v2/
 │   ├── ld2410_driver.h         # 雷达接口
 │   └── ...                     # 其他模块头文件
 ├── models/                     # AI 模型
-│   ├── sound_classifier.tflite # 声音分类器 (~30KB)
-│   ├── radar_analyzer.tflite   # 雷达分析器 (~2KB)
-│   └── fusion_model.tflite     # 融合决策器 (~3KB)
+│   ├── sound_classifier.tflite # 声音分类器 (~12KB)
+│   ├── radar_analyzer.tflite   # 雷达分析器 (~4KB)
+│   └── fusion_model.tflite     # 融合决策器 (~5KB)
 ├── tests/                      # 单元测试
 │   └── test_multimodal.c       # 多模态推理测试
 ├── ai/                         # AI 模型训练脚本

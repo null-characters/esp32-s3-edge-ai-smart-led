@@ -162,7 +162,7 @@ sound_classifier = tf.keras.Sequential([
     tf.keras.layers.Dense(32, activation='relu'),
     tf.keras.layers.Dense(5, activation='softmax')  # 5 类场景
 ])
-# 模型大小: ~30KB (INT8 量化后)
+# 模型大小: ~12KB (INT8 量化后)
 ```
 
 ### 3.3 雷达分析器（模型 B）
@@ -190,7 +190,7 @@ radar_analyzer = tf.keras.Sequential([
     tf.keras.layers.Dense(12, activation='relu'),
     tf.keras.layers.Dense(6, activation='linear')  # 输出: 6 维特征
 ])
-# 模型大小: ~2KB
+# 模型大小: ~4KB
 ```
 
 ### 3.4 多模态融合层（模型 C）
@@ -209,19 +209,19 @@ fusion_model = tf.keras.Sequential([
     tf.keras.layers.Dense(16, activation='relu'),
     tf.keras.layers.Dense(2, activation='sigmoid')  # 色温、亮度
 ])
-# 模型大小: ~3KB
+# 模型大小: ~5KB
 ```
 
 ### 3.5 总模型大小估算
 
 | 模型 | Float32 | INT8 量化后 |
 |------|---------|-------------|
-| 声音分类器 | ~120 KB | ~30 KB |
-| 雷达分析器 | ~8 KB | ~2 KB |
-| 融合决策器 | ~12 KB | ~3 KB |
-| **总计** | ~140 KB | ~35 KB |
+| 声音分类器 | ~48 KB | ~12 KB |
+| 雷达分析器 | ~16 KB | ~4 KB |
+| 融合决策器 | ~20 KB | ~5 KB |
+| **总计** | ~84 KB | ~21 KB |
 
-**PSRAM 利用率**：35KB / 8MB ≈ 0.4%，仍有大量空间用于：
+**PSRAM 利用率**：21KB / 8MB ≈ 0.3%，仍有大量空间用于：
 - 音频缓冲区（16kHz × 2s = 32KB）
 - 雷达历史数据（10Hz × 60s × 8 维 = 4.8KB）
 - 推理中间结果
