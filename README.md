@@ -4,6 +4,8 @@
 
 > **架构巨变公告**：项目已从 Zephyr RTOS 迁移到 ESP-IDF，以集成 ESP-SR 语音识别框架，实现从"感知设备"到"交互设备"的本质跨越。详见 [架构巨变思考](docs/knowledge/from-perception-to-interaction.md)。
 
+> **v4 前沿探索公告**：项目已添加 v4 规划文档（云端智能体升级），但**实际开发仍以 v3（语音交互版本）为主要开发分支**。v4 仅为前沿探索项目，用于验证端云协作、Lua 沙箱、流式 TTS 等前沿技术方案的可行性，暂不进入实际开发阶段。详见 [v4 总体规划](docs/esp32s3_edge_ai_gateway/plan-v4-esp-claw-agent/01-云端智能体升级总体规划.md)。
+
 ---
 
 ## 项目简介
