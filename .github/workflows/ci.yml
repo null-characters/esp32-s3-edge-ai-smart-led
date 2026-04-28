@@ -32,13 +32,7 @@ jobs:
           . /opt/esp/idf/export.sh
           idf.py set-target esp32s3
           idf.py build
-      
-      - name: Generate SPIFFS image
-        working-directory: prj-v3
-        run: |
-          . /opt/esp/idf/export.sh
-          idf.py spiffs-image
-      
+
       - name: Check firmware size
         working-directory: prj-v3
         run: |
