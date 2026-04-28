@@ -24,6 +24,21 @@
 static const char *TAG = "AUDIO_AFE";
 
 /* ================================================================
+ * 内存状态打印辅助函数
+ * ================================================================ */
+
+static void print_memory_status(void)
+{
+    ESP_LOGI(TAG, "内存状态:");
+    ESP_LOGI(TAG, "  内部RAM: %lu bytes 可用", 
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "  PSRAM: %lu bytes 可用", 
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    ESP_LOGI(TAG, "  DMA可用: %lu bytes", 
+             heap_caps_get_free_size(MALLOC_CAP_DMA));
+}
+
+/* ================================================================
  * 模块状态
  * ================================================================ */
 
@@ -92,6 +107,10 @@ static void audio_afe_task(void *arg)
     
     ESP_LOGI(TAG, "音频处理任务启动");
     
+    /* 打印初始栈水位 */
+    UBaseType_t initial_watermark = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "初始栈水位: %u bytes", initial_watermark * sizeof(StackType_t));
+    
     while (state->running) {
         /* 从 I2S 读取音频 */
         ret = i2s_read_timeout(state->audio_buffer, state->feed_chunk_size, 
@@ -130,7 +149,22 @@ static void audio_afe_task(void *arg)
                 }
             }
         }
+        
+        /* 每1000次循环打印栈水位 (监控栈使用) */
+        static uint32_t loop_count = 0;
+        if (++loop_count % 1000 == 0) {
+            UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
+            ESP_LOGD(TAG, "栈水位: %u bytes (使用: %u bytes)", 
+                     watermark * sizeof(StackType_t),
+                     (16 * 1024) - watermark * sizeof(StackType_t));
+        }
     }
+    
+    /* 打印最终栈水位 */
+    UBaseType_t final_watermark = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "最终栈水位: %u bytes (峰值使用: %u bytes)", 
+             final_watermark * sizeof(StackType_t),
+             (16 * 1024) - final_watermark * sizeof(StackType_t));
     
     ESP_LOGI(TAG, "音频处理任务退出");
     
@@ -158,6 +192,9 @@ int audio_afe_init(const audio_afe_config_t *config)
     }
     
     ESP_LOGI(TAG, "初始化 AFE 模块 (INMP441 + ESP-SR)");
+    
+    /* 打印初始内存状态 */
+    print_memory_status();
     
     /* 保存配置 */
     memcpy(&g_state.config, config, sizeof(audio_afe_config_t));
@@ -251,6 +288,10 @@ int audio_afe_init(const audio_afe_config_t *config)
     }
     
     g_state.initialized = true;
+    
+    /* 打印初始化后内存状态 */
+    ESP_LOGI(TAG, "AFE 初始化后内存状态:");
+    print_memory_status();
     
     ESP_LOGI(TAG, "AFE 初始化成功: feed=%d, fetch=%d, sr=%dHz",
              g_state.feed_chunk_size, g_state.fetch_chunk_size, config->sample_rate);

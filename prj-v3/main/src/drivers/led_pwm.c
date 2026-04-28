@@ -140,10 +140,10 @@ esp_err_t led_fade_to_brightness(uint8_t target_brightness, uint32_t duration_ms
     
     uint32_t target_duty = (8191 * target_brightness) / 100;
     
-    ESP_ERROR_CHECK(ledc_set_fade_with_time(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, 
-                                             target_duty, duration_ms));
-    ESP_ERROR_CHECK(ledc_fade_start(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, 
-                                     LEDC_FADE_WAIT_DONE));
+    /* 使用线程安全API (ESP-IDF v5.1+) */
+    ESP_ERROR_CHECK(ledc_set_fade_time_and_start(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, 
+                                                   target_duty, duration_ms, 
+                                                   LEDC_FADE_WAIT_DONE));
     
     g_brightness = target_brightness;
     ESP_LOGD(TAG, "Faded to brightness %d%% in %lums", target_brightness, duration_ms);
@@ -158,10 +158,10 @@ esp_err_t led_fade_to_color_temp(uint16_t target_kelvin, uint32_t duration_ms)
     uint32_t warm_ratio = (6500 - target_kelvin) * 100 / (6500 - 2700);
     uint32_t target_duty = (8191 * warm_ratio) / 100;
     
-    ESP_ERROR_CHECK(ledc_set_fade_with_time(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, 
-                                             target_duty, duration_ms));
-    ESP_ERROR_CHECK(ledc_fade_start(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, 
-                                     LEDC_FADE_WAIT_DONE));
+    /* 使用线程安全API (ESP-IDF v5.1+) */
+    ESP_ERROR_CHECK(ledc_set_fade_time_and_start(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, 
+                                                   target_duty, duration_ms, 
+                                                   LEDC_FADE_WAIT_DONE));
     
     g_color_temp = target_kelvin;
     ESP_LOGD(TAG, "Faded to color temp %dK in %lums", target_kelvin, duration_ms);

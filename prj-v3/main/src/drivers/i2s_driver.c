@@ -30,6 +30,20 @@ static uint32_t g_sample_rate = DEFAULT_SAMPLE_RATE;
 /* 静态缓冲区用于清空DMA (避免栈分配) */
 static int16_t s_dummy_buf[DMA_BUF_SIZE];
 
+/* 溢出计数器 (用于监控) */
+static volatile uint32_t g_overflow_count = 0;
+
+/**
+ * @brief I2S RX队列溢出回调 (官方建议实现)
+ */
+static IRAM_ATTR bool i2s_rx_overflow_callback(i2s_chan_handle_t handle, 
+                                                i2s_event_data_t *event, 
+                                                void *user_ctx)
+{
+    g_overflow_count++;
+    return false;  /* 返回false表示不处理事件 */
+}
+
 esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
 {
     if (g_rx_handle != NULL) {
@@ -95,6 +109,15 @@ esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
         return ret;
     }
 
+    /* 注册溢出事件回调 (官方建议) */
+    i2s_event_callbacks_t cbs = {
+        .on_recv = NULL,
+        .on_recv_q_ovf = i2s_rx_overflow_callback,
+        .on_sent = NULL,
+        .on_send_q_ovf = NULL,
+    };
+    i2s_channel_register_event_callback(g_rx_handle, &cbs, NULL);
+
     ESP_LOGI(TAG, "I2S initialized: rate=%luHz, bits=%d, ws=%d, sd=%d, clk=%d", 
              sample_rate, bits_per_sample, I2S_WS_GPIO, I2S_SD_GPIO, I2S_CLK_GPIO);
     return ESP_OK;
@@ -147,6 +170,11 @@ esp_err_t i2s_deinit(void)
 uint32_t i2s_get_sample_rate(void)
 {
     return g_sample_rate;
+}
+
+uint32_t i2s_get_overflow_count(void)
+{
+    return g_overflow_count;
 }
 
 esp_err_t i2s_clear_dma_buffer(void)

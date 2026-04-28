@@ -70,6 +70,13 @@ esp_err_t i2s_deinit(void);
 uint32_t i2s_get_sample_rate(void);
 
 /**
+ * @brief 获取 DMA 溢出计数
+ * 
+ * @return 溢出次数
+ */
+uint32_t i2s_get_overflow_count(void);
+
+/**
  * @brief 清空 DMA 缓冲区
  * 
  * @return ESP_OK 成功
