@@ -53,24 +53,41 @@ prj-v3/
 │   ├── src/
 │   │   ├── main.c              # 应用入口
 │   │   ├── voice/              # 语音交互模块
-│   │   │   └── wake_word.c     # 唤醒词处理（"小白网关"）
+│   │   │   ├── wake_word.c     # 唤醒词处理（"小白网关"）
+│   │   │   ├── aec_pipeline.c  # AEC 回声消除 (ESP-SR)
+│   │   │   ├── tts_engine.c    # TTS 语音合成 (ESP-SR)
+│   │   │   ├── vad_detector.c  # VAD 语音活动检测 (ESP-SR)
+│   │   │   ├── audio_router.c  # 音频动态路由
+│   │   │   └── command_handler.c # 命令处理与执行
 │   │   ├── multimodal/         # 多模态推理层
 │   │   │   └── tflm_allocator.c    # TFLM 内存分配
 │   │   ├── audio/              # 音频处理层
-│   │   │   └── mfcc.c          # MFCC 特征提取
+│   │   │   ├── mfcc.c          # MFCC 特征提取
+│   │   │   └── audio_afe.c     # 音频前端处理
 │   │   ├── radar/              # 雷达处理层
 │   │   │   └── ld2410_driver.c # LD2410 驱动
 │   │   ├── drivers/            # 设备驱动层
 │   │   │   ├── led_pwm.c       # LED PWM 驱动
 │   │   │   ├── uart_driver.c   # UART 通用驱动
-│   │   │   └── i2s_driver.c    # I2S 麦克风驱动
+│   │   │   ├── i2s_driver.c    # I2S 麦克风驱动
+│   │   │   └── dac_driver.c    # DAC 音频输出驱动
+│   │   ├── arbitration/        # 仲裁模块
+│   │   │   ├── ttl_lease.c     # TTL 租约管理
+│   │   │   └── env_watcher.c   # 环境状态监控
 │   │   └── network/            # 网络模块
 │   │       └── wifi_sta.c      # Wi-Fi 站点模式
 │   └── test/                   # 单元测试 ⭐ 新增
 │       ├── test_main.c         # 测试入口
 │       ├── test_ld2410.c       # LD2410 驱动测试
 │       ├── test_mfcc.c         # MFCC 特征提取测试
-│       └── test_wake_word.c    # 唤醒词模块测试
+│       ├── test_wake_word.c    # 唤醒词模块测试
+│       ├── test_aec_pipeline.c # AEC 回声消除测试 ⭐
+│       ├── test_tts_engine.c   # TTS 语音合成测试 ⭐
+│       ├── test_vad_detector.c # VAD 检测测试 ⭐
+│       ├── test_audio_router.c # 音频路由测试 ⭐
+│       ├── test_command_handler.c # 命令处理测试
+│       ├── test_model_loader.c # 模型加载测试
+│       └── test_priority_arbiter.c # 优先级仲裁测试
 ├── managed_components/         # ESP-IDF 组件管理器下载的组件
 │   ├── espressif__esp-sr/      # ESP-SR 语音识别 ⭐
 │   ├── espressif__esp-tflite-micro/  # TFLM 推理框架 ⭐
@@ -386,11 +403,15 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 | MFCC 特征提取 | ✅ 已完成 | ESP-DSP 加速，40 维特征 |
 | 唤醒词检测封装 | ✅ 已完成 | wake_word.c/h |
 | TFLM 内存分配 | ✅ 已完成 | PSRAM Arena 分配器 |
-| Unity 单元测试 | ✅ 已完成 | 25 个测试用例 |
-| 语音命令处理 | ⏳ 规划中 | 50+ 条命令词 |
-| 双轨仲裁机制 | ⏳ 规划中 | 语音优先级仲裁 |
+| AEC 回声消除 | ✅ 已完成 | ESP-SR esp_aec.h API |
+| TTS 语音合成 | ✅ 已完成 | ESP-SR 中文 TTS (xiaole) |
+| VAD 语音检测 | ✅ 已完成 | ESP-SR esp_vad.h API |
+| 音频动态路由 | ✅ 已完成 | VAD 驱动的 ESP-SR/TFLM 路由 |
+| 命令处理器 | ✅ 已完成 | 50+ 条命令词 + TTS 回复 |
+| DAC 音频驱动 | ✅ 已完成 | I2S DAC 输出驱动 |
+| Unity 单元测试 | ✅ 已完成 | 40+ 个测试用例 |
+| 双轨仲裁机制 | ✅ 已完成 | TTL 租约 + 环境监控 |
 | 多模态推理迁移 | 🚧 进行中 | 模型加载机制 |
-| ESP-ADF 集成 | ⏳ 规划中 | 音频管道框架 |
 
 ### 多模态版本 (prj-v2，Zephyr，已归档)
 
@@ -461,5 +482,6 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 **维护者**: null-characters
 **创建日期**: 2026-04-24
 **最后更新**: 2026-04-28
-**ESP-IDF 版本**: v5.4+
+**ESP-IDF 版本**: v6.1
 **架构版本**: prj-v3 (语音交互版本)
+**测试覆盖**: 40+ Unity 单元测试
