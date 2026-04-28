@@ -12,8 +12,8 @@ static const char *TAG = "UART_DRV";
 
 /* UART 配置 */
 #define UART_NUM_RADAR      UART_NUM_1
-#define UART_TX_GPIO        17
-#define UART_RX_GPIO        18
+#define UART_TX_GPIO        8   /* 改为 GPIO8，避免与 DAC (GPIO17/18) 冲突 */
+#define UART_RX_GPIO        9   /* 改为 GPIO9，避免与 DAC (GPIO17/18) 冲突 */
 #define UART_RX_BUF_SIZE    256
 #define UART_TX_BUF_SIZE    256
 
