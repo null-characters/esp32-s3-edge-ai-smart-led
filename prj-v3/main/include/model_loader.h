@@ -29,12 +29,16 @@ typedef enum {
 
 /**
  * @brief 模型信息
+ * @note size 字段说明:
+ *   - 加载前: 预估的模型大小（仅用于信息展示）
+ *   - 加载后: 实际加载的模型文件大小
+ *   - 建议使用 model_loader_get() 获取准确的模型大小
  */
 typedef struct {
     model_type_t type;             /* 模型类型 */
     const char *name;              /* 模型名称 */
     const char *path;              /* 模型路径 (SPIFFS) */
-    size_t size;                   /* 模型大小 (字节) */
+    size_t size;                   /* 模型大小 (字节) - 加载前为预估，加载后为实际 */
     bool is_loaded;                /* 是否已加载 */
     uint8_t *data;                 /* 模型数据指针 */
 } model_info_t;

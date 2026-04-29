@@ -9,6 +9,7 @@
 #include "esp_heap_caps.h"
 #include <string.h>
 #include <stdio.h>
+#include "freertos/semphr.h"
 
 static const char *TAG = "MODEL_LOADER";
 
@@ -21,13 +22,23 @@ static const char *TAG = "MODEL_LOADER";
 #define MODEL_PATH_RADAR    "/spiffs/models/radar_analyzer.tflite"
 #define MODEL_PATH_FUSION   "/spiffs/models/fusion_model.tflite"
 
+/* 分块读取大小 */
+#define MODEL_CHUNK_SIZE    4096
+
+/**
+ * @brief 模型信息结构体
+ * @note size 字段说明:
+ *   - 加载前: 预估的模型大小（仅用于信息展示）
+ *   - 加载后: 实际加载的模型文件大小
+ *   - 建议使用 model_loader_get() 获取准确的模型大小
+ */
 /* 模型信息表 (INT8 量化模型) */
 static model_info_t g_models[MODEL_TYPE_MAX] = {
     [MODEL_TYPE_SOUND_CLASSIFIER] = {
         .type = MODEL_TYPE_SOUND_CLASSIFIER,
         .name = "sound_classifier",
         .path = MODEL_PATH_SOUND,
-        .size = 12 * 1024,  /* 12KB (CNN) */
+        .size = 12 * 1024,  /* 12KB (CNN) - 预估大小 */
         .is_loaded = false,
         .data = NULL,
     },
@@ -35,7 +46,7 @@ static model_info_t g_models[MODEL_TYPE_MAX] = {
         .type = MODEL_TYPE_RADAR_ANALYZER,
         .name = "radar_analyzer",
         .path = MODEL_PATH_RADAR,
-        .size = 4 * 1024,   /* 3.6KB (MLP) */
+        .size = 4 * 1024,   /* 4KB (MLP) - 预估大小 */
         .is_loaded = false,
         .data = NULL,
     },
@@ -43,7 +54,7 @@ static model_info_t g_models[MODEL_TYPE_MAX] = {
         .type = MODEL_TYPE_FUSION_MODEL,
         .name = "fusion_model",
         .path = MODEL_PATH_FUSION,
-        .size = 5 * 1024,   /* 5KB (MLP) */
+        .size = 5 * 1024,   /* 5KB (MLP) - 预估大小 */
         .is_loaded = false,
         .data = NULL,
     },
@@ -51,6 +62,9 @@ static model_info_t g_models[MODEL_TYPE_MAX] = {
 
 /* SPIFFS 是否已挂载 */
 static bool g_spiffs_mounted = false;
+
+/* 并发保护互斥锁 */
+static SemaphoreHandle_t g_mutex = NULL;
 
 /* ================================================================
  * 私有函数
@@ -69,7 +83,7 @@ static esp_err_t mount_spiffs(void)
         .base_path = "/spiffs",
         .partition_label = NULL,
         .max_files = 5,
-        .format_if_mount_failed = true,
+        .format_if_mount_failed = false,  /* 生产环境不自动格式化，避免数据丢失 */
     };
     
     esp_err_t ret = esp_vfs_spiffs_register(&conf);
@@ -85,24 +99,14 @@ static esp_err_t mount_spiffs(void)
 
 /**
  * @brief 从 SPIFFS 加载模型文件
+ * @note 模型文件必须存在，不支持占位符（全零数据会导致 TFLM 崩溃）
  */
 static esp_err_t load_model_from_spiffs(model_info_t *model, model_load_callback_t callback, void *user_data)
 {
     FILE *fp = fopen(model->path, "rb");
     if (!fp) {
-        ESP_LOGW(TAG, "模型文件不存在: %s (使用占位符)", model->path);
-        
-        /* 使用占位符数据 (全零) */
-        model->data = heap_caps_malloc(model->size, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
-        if (!model->data) {
-            ESP_LOGE(TAG, "分配模型内存失败: %zu 字节", model->size);
-            return ESP_ERR_NO_MEM;
-        }
-        memset(model->data, 0, model->size);
-        model->is_loaded = true;
-        
-        ESP_LOGI(TAG, "使用占位符模型: %s (%zu 字节)", model->name, model->size);
-        return ESP_OK;
+        ESP_LOGE(TAG, "模型文件不存在: %s", model->path);
+        return ESP_ERR_NOT_FOUND;
     }
     
     /* 获取文件大小 */
@@ -119,12 +123,11 @@ static esp_err_t load_model_from_spiffs(model_info_t *model, model_load_callback
     }
     
     /* 分块读取文件 */
-    size_t chunk_size = 4096;
     size_t bytes_read = 0;
     int progress = 0;
     
     while (bytes_read < file_size) {
-        size_t to_read = (file_size - bytes_read > chunk_size) ? chunk_size : (file_size - bytes_read);
+        size_t to_read = (file_size - bytes_read > MODEL_CHUNK_SIZE) ? MODEL_CHUNK_SIZE : (file_size - bytes_read);
         size_t n = fread(model->data + bytes_read, 1, to_read, fp);
         if (n == 0) break;
         bytes_read += n;
@@ -138,6 +141,13 @@ static esp_err_t load_model_from_spiffs(model_info_t *model, model_load_callback
     }
     
     fclose(fp);
+    
+    if (bytes_read != file_size) {
+        ESP_LOGE(TAG, "模型读取不完整: %zu / %zu 字节", bytes_read, file_size);
+        heap_caps_free(model->data);
+        model->data = NULL;
+        return ESP_ERR_INVALID_SIZE;
+    }
     
     model->size = bytes_read;
     model->is_loaded = true;
@@ -154,15 +164,26 @@ esp_err_t model_loader_init(void)
 {
     ESP_LOGI(TAG, "初始化模型加载器");
     
+    /* 创建互斥锁 */
+    if (!g_mutex) {
+        g_mutex = xSemaphoreCreateMutex();
+        if (!g_mutex) {
+            ESP_LOGE(TAG, "创建互斥锁失败");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    
     /* 挂载 SPIFFS */
     esp_err_t ret = mount_spiffs();
     if (ret != ESP_OK) {
+        vSemaphoreDelete(g_mutex);
+        g_mutex = NULL;
         return ret;
     }
     
     /* 打印模型信息 */
     for (int i = 0; i < MODEL_TYPE_MAX; i++) {
-        ESP_LOGI(TAG, "  [%d] %s: %zu 字节, 路径: %s",
+        ESP_LOGI(TAG, "  [%d] %s: %zu 字节 (预估), 路径: %s",
                  i, g_models[i].name, g_models[i].size, g_models[i].path);
     }
     
@@ -171,6 +192,12 @@ esp_err_t model_loader_init(void)
 
 void model_loader_deinit(void)
 {
+    if (!g_mutex) {
+        return;
+    }
+    
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    
     /* 卸载所有模型 */
     for (int i = 0; i < MODEL_TYPE_MAX; i++) {
         if (g_models[i].data) {
@@ -186,6 +213,10 @@ void model_loader_deinit(void)
         g_spiffs_mounted = false;
     }
     
+    xSemaphoreGive(g_mutex);
+    vSemaphoreDelete(g_mutex);
+    g_mutex = NULL;
+    
     ESP_LOGI(TAG, "模型加载器已释放");
 }
 
@@ -195,16 +226,28 @@ esp_err_t model_loader_load(model_type_t type, model_load_callback_t callback, v
         return ESP_ERR_INVALID_ARG;
     }
     
+    if (!g_mutex) {
+        ESP_LOGE(TAG, "模型加载器未初始化");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    
     model_info_t *model = &g_models[type];
     
     if (model->is_loaded) {
+        xSemaphoreGive(g_mutex);
         ESP_LOGW(TAG, "模型已加载: %s", model->name);
         return ESP_OK;
     }
     
     ESP_LOGI(TAG, "加载模型: %s", model->name);
     
-    return load_model_from_spiffs(model, callback, user_data);
+    esp_err_t ret = load_model_from_spiffs(model, callback, user_data);
+    
+    xSemaphoreGive(g_mutex);
+    
+    return ret;
 }
 
 esp_err_t model_loader_unload(model_type_t type)
@@ -213,9 +256,16 @@ esp_err_t model_loader_unload(model_type_t type)
         return ESP_ERR_INVALID_ARG;
     }
     
+    if (!g_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    
     model_info_t *model = &g_models[type];
     
     if (!model->is_loaded) {
+        xSemaphoreGive(g_mutex);
         return ESP_OK;
     }
     
@@ -225,6 +275,8 @@ esp_err_t model_loader_unload(model_type_t type)
     }
     
     model->is_loaded = false;
+    xSemaphoreGive(g_mutex);
+    
     ESP_LOGI(TAG, "模型已卸载: %s", model->name);
     
     return ESP_OK;
@@ -236,14 +288,23 @@ esp_err_t model_loader_get(model_type_t type, uint8_t **data, size_t *size)
         return ESP_ERR_INVALID_ARG;
     }
     
+    if (!g_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    
     model_info_t *model = &g_models[type];
     
     if (!model->is_loaded) {
+        xSemaphoreGive(g_mutex);
         return ESP_ERR_NOT_FOUND;
     }
     
     *data = model->data;
     *size = model->size;
+    
+    xSemaphoreGive(g_mutex);
     
     return ESP_OK;
 }
