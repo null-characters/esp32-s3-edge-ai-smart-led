@@ -359,6 +359,11 @@ esp_err_t tts_speak(const char *text)
     
     /* 异步播放 */
     tts_play_request_t request;
+    size_t text_len = strlen(text);
+    if (text_len >= sizeof(request.text)) {
+        ESP_LOGW(TAG, "文本过长 (%zu 字符)，将被截断为 %zu 字符", 
+                 text_len, sizeof(request.text) - 1);
+    }
     strncpy(request.text, text, sizeof(request.text) - 1);
     request.text[sizeof(request.text) - 1] = '\0';
     request.blocking = false;

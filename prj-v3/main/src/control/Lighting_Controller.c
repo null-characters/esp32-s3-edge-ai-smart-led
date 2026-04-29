@@ -46,7 +46,7 @@ typedef struct {
     uint8_t current_brightness;
     uint16_t current_color_temp;
     bool current_power;
-    bool auto_mode;
+    /* 注意: auto_mode 已移除，统一使用 priority_arbiter_get_mode() 获取模式 */
     
     /* 回调 */
     controller_event_callback_t callback;
@@ -125,13 +125,15 @@ static void process_event(const Lighting_Event_t *event)
     
     ESP_LOGI(TAG, "处理事件: source=%d, type=%d", event->source, event->type);
     
+    /* 获取当前模式 (统一从 arbiter 获取) */
+    system_mode_t current_mode = priority_arbiter_get_mode();
+    
     /* 处理 TTL 租约 */
     if (event->source == EVENT_SOURCE_VOICE && event->has_lease) {
         ttl_lease_acquire(event->ttl_ms);
-        g_ctrl.auto_mode = false;
     } else if (event->source == EVENT_SOURCE_AUTO) {
         /* 自动控制事件：检查是否在自动模式 */
-        if (!g_ctrl.auto_mode) {
+        if (current_mode != MODE_AUTO) {
             ESP_LOGD(TAG, "手动模式，忽略自动控制事件");
             return;
         }
@@ -165,7 +167,7 @@ static void process_event(const Lighting_Event_t *event)
             if (event->data.mode == 0) {
                 /* 恢复自动模式 */
                 ttl_lease_release(LEASE_RELEASE_USER_CMD);
-                g_ctrl.auto_mode = true;
+                priority_arbiter_set_mode(MODE_AUTO);
                 ESP_LOGI(TAG, "恢复自动模式");
             }
             break;
@@ -247,7 +249,6 @@ esp_err_t lighting_controller_init(const controller_config_t *config)
     g_ctrl.current_brightness = 50;
     g_ctrl.current_color_temp = 4000;
     g_ctrl.current_power = true;
-    g_ctrl.auto_mode = true;
     g_ctrl.running = false;
     g_ctrl.initialized = true;
     
@@ -392,7 +393,7 @@ void lighting_controller_get_state(uint8_t *brightness, uint16_t *color_temp, bo
 
 bool lighting_controller_is_auto_mode(void)
 {
-    return g_ctrl.auto_mode;
+    return (priority_arbiter_get_mode() == MODE_AUTO);
 }
 
 void lighting_controller_set_callback(controller_event_callback_t callback, void *user_data)

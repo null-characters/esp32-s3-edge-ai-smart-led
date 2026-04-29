@@ -20,6 +20,13 @@ static const char *TAG = "VAD";
  * 模块状态
  * ================================================================ */
 
+/* 语音时长追踪 (替代访问私有结构体成员) */
+typedef struct {
+    int32_t speech_frame_count;    /**< 语音帧计数 */
+    int32_t noise_frame_count;     /**< 噪声帧计数 */
+    int64_t speech_start_time_ms;  /**< 语音开始时间 */
+} vad_duration_tracker_t;
+
 typedef struct {
     bool initialized;
     
@@ -29,6 +36,9 @@ typedef struct {
     /* 当前状态 */
     vad_state_t current_state;
     int hangover_count;
+    
+    /* 时长追踪 (替代访问私有成员) */
+    vad_duration_tracker_t duration_tracker;
     
     /* 配置 */
     vad_config_t config;
@@ -194,6 +204,17 @@ esp_err_t vad_detector_process(const int16_t *samples, vad_result_t *result)
         g_vad.hangover_count = 0;
     }
     
+    /* 更新时长追踪 (替代访问私有结构体成员) */
+    if (new_state == VAD_SPEECH) {
+        g_vad.duration_tracker.speech_frame_count++;
+        if (g_vad.current_state != VAD_SPEECH) {
+            /* 语音开始，记录时间 */
+            g_vad.duration_tracker.speech_start_time_ms = esp_timer_get_time() / 1000;
+        }
+    } else {
+        g_vad.duration_tracker.noise_frame_count++;
+    }
+    
     /* 计算语音概率 (基于 ESP-SR VAD 结果) */
     float voice_prob = (esp_vad_state == VAD_SPEECH) ? 0.8f : 0.1f;
     
@@ -340,11 +361,8 @@ uint32_t vad_detector_get_speech_duration_ms(void)
     
     xSemaphoreTake(g_vad.mutex, portMAX_DELAY);
     
-    /* ESP-SR VAD 内部追踪语音时长 */
-    uint32_t duration_ms = 0;
-    if (g_vad.vad_handle && g_vad.vad_handle->trigger) {
-        duration_ms = g_vad.vad_handle->trigger->speech_len * VAD_FRAME_LENGTH_MS;
-    }
+    /* 使用内部追踪的语音帧数计算时长 (替代访问私有成员) */
+    uint32_t duration_ms = g_vad.duration_tracker.speech_frame_count * VAD_FRAME_LENGTH_MS;
     
     xSemaphoreGive(g_vad.mutex);
     
@@ -361,12 +379,10 @@ void vad_detector_print_stats(void)
     
     ESP_LOGI(TAG, "VAD 状态: %s", g_vad.current_state == VAD_SPEECH ? "人声" : "静音");
     ESP_LOGI(TAG, "VAD 模式: %d, 拖尾帧: %d", g_vad.config.vad_mode, g_vad.config.hangover_frames);
-    
-    if (g_vad.vad_handle && g_vad.vad_handle->trigger) {
-        ESP_LOGI(TAG, "语音帧数: %d, 静音帧数: %d",
-                 g_vad.vad_handle->trigger->speech_len,
-                 g_vad.vad_handle->trigger->noise_len);
-    }
+    ESP_LOGI(TAG, "语音帧数: %ld, 静音帧数: %ld (时长: %lums)",
+             (long)g_vad.duration_tracker.speech_frame_count,
+             (long)g_vad.duration_tracker.noise_frame_count,
+             (long)(g_vad.duration_tracker.speech_frame_count * VAD_FRAME_LENGTH_MS));
     
     xSemaphoreGive(g_vad.mutex);
 }

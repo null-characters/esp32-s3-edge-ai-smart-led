@@ -21,6 +21,13 @@ static const char *TAG = "STATUS_LED";
 #define DEFAULT_BREATH_PERIOD    2000  /* ms */
 #define RESULT_DISPLAY_DURATION  1000  /* ms */
 
+/* 默认 GPIO (可通过 Kconfig 配置) */
+#ifndef CONFIG_STATUS_LED_GPIO
+#define STATUS_LED_DEFAULT_GPIO  48
+#else
+#define STATUS_LED_DEFAULT_GPIO  CONFIG_STATUS_LED_GPIO
+#endif
+
 /* 状态颜色映射表 */
 typedef struct {
     ws2812_color_t color;       ///< 基础颜色
@@ -51,34 +58,60 @@ typedef struct {
 static status_led_state_t g_status = {0};
 
 /* ================================================================
- * 状态颜色映射表
+ * 状态颜色映射表 (紧凑数组)
  * ================================================================ */
 
-static const status_color_map_t status_color_map[] = {
+/**
+ * @brief 状态映射条目
+ */
+typedef struct {
+    status_led_state_enum_t state;  ///< 状态枚举值
+    status_color_map_t map;         ///< 颜色映射
+} status_map_entry_t;
+
+/* 紧凑映射表，避免稀疏数组的未初始化元素 */
+static const status_map_entry_t status_map_table[] = {
     /* WiFi 状态 */
-    [STATUS_LED_WIFI_DISCONNECTED]  = {WS2812_COLOR_RED,     true,  false, 1000},  /* 红色慢闪 */
-    [STATUS_LED_WIFI_CONNECTING]    = {WS2812_COLOR_YELLOW,  true,  false, 250},   /* 黄色快闪 */
-    [STATUS_LED_WIFI_CONNECTED]     = {WS2812_COLOR_GREEN,   false, false, 0},    /* 绿色常亮 */
-    [STATUS_LED_WIFI_FAILED]        = {WS2812_COLOR_RED,     false, false, 0},    /* 红色常亮 */
+    {STATUS_LED_WIFI_DISCONNECTED,  {WS2812_COLOR_RED,     true,  false, 1000}},  /* 红色慢闪 */
+    {STATUS_LED_WIFI_CONNECTING,    {WS2812_COLOR_YELLOW,  true,  false, 250}},   /* 黄色快闪 */
+    {STATUS_LED_WIFI_CONNECTED,     {WS2812_COLOR_GREEN,   false, false, 0}},     /* 绿色常亮 */
+    {STATUS_LED_WIFI_FAILED,        {WS2812_COLOR_RED,     false, false, 0}},     /* 红色常亮 */
     
     /* 系统模式 */
-    [STATUS_LED_MODE_AUTO]          = {WS2812_COLOR_BLUE,    false, false, 0},    /* 蓝色常亮 */
-    [STATUS_LED_MODE_MANUAL]        = {WS2812_COLOR_CYAN,   false, false, 0},    /* 青色常亮 */
-    [STATUS_LED_MODE_VOICE]         = {WS2812_COLOR_PURPLE, false, false, 0},    /* 紫色常亮 */
-    [STATUS_LED_MODE_SLEEP]         = {WS2812_COLOR_BLACK,  false, false, 0},    /* 熄灭 */
+    {STATUS_LED_MODE_AUTO,          {WS2812_COLOR_BLUE,    false, false, 0}},     /* 蓝色常亮 */
+    {STATUS_LED_MODE_MANUAL,        {WS2812_COLOR_CYAN,    false, false, 0}},     /* 青色常亮 */
+    {STATUS_LED_MODE_VOICE,         {WS2812_COLOR_PURPLE,  false, false, 0}},     /* 紫色常亮 */
+    {STATUS_LED_MODE_SLEEP,         {WS2812_COLOR_BLACK,   false, false, 0}},     /* 熄灭 */
     
     /* 语音交互 */
-    [STATUS_LED_VOICE_IDLE]         = {WS2812_COLOR_BLACK,  false, false, 0},    /* 随模式 */
-    [STATUS_LED_VOICE_LISTENING]    = {WS2812_COLOR_WHITE,  false, true,  2000}, /* 白色呼吸 */
-    [STATUS_LED_VOICE_PROCESSING]   = {WS2812_COLOR_WHITE,  true,  false, 200},  /* 白色快闪 */
-    [STATUS_LED_VOICE_SUCCESS]      = {WS2812_COLOR_GREEN,  true,  false, 100},  /* 绿色快闪 */
-    [STATUS_LED_VOICE_ERROR]        = {WS2812_COLOR_RED,    true,  false, 100},  /* 红色快闪 */
+    {STATUS_LED_VOICE_IDLE,         {WS2812_COLOR_BLACK,   false, false, 0}},     /* 随模式 */
+    {STATUS_LED_VOICE_LISTENING,    {WS2812_COLOR_WHITE,   false, true,  2000}},  /* 白色呼吸 */
+    {STATUS_LED_VOICE_PROCESSING,   {WS2812_COLOR_WHITE,   true,  false, 200}},   /* 白色快闪 */
+    {STATUS_LED_VOICE_SUCCESS,      {WS2812_COLOR_GREEN,   true,  false, 100}},   /* 绿色快闪 */
+    {STATUS_LED_VOICE_ERROR,        {WS2812_COLOR_RED,     true,  false, 100}},   /* 红色快闪 */
     
     /* 特殊状态 */
-    [STATUS_LED_BOOTING]            = {WS2812_COLOR_WHITE,  false, true,  3000}, /* 彩虹渐变 */
-    [STATUS_LED_ERROR]              = {WS2812_COLOR_RED,    true,  false, 200},  /* 红色快闪 */
-    [STATUS_LED_UPDATING]           = {WS2812_COLOR_YELLOW, false, true,  2000}, /* 黄色呼吸 */
+    {STATUS_LED_BOOTING,            {WS2812_COLOR_WHITE,   false, true,  3000}},  /* 彩虹渐变 */
+    {STATUS_LED_ERROR,              {WS2812_COLOR_RED,     true,  false, 200}},   /* 红色快闪 */
+    {STATUS_LED_UPDATING,           {WS2812_COLOR_YELLOW,  false, true,  2000}},  /* 黄色呼吸 */
 };
+
+#define STATUS_MAP_TABLE_SIZE  (sizeof(status_map_table) / sizeof(status_map_table[0]))
+
+/**
+ * @brief 查找状态映射
+ * @param state 状态枚举值
+ * @return 映射条目指针，未找到返回 NULL
+ */
+static const status_color_map_t* find_status_map(status_led_state_enum_t state)
+{
+    for (size_t i = 0; i < STATUS_MAP_TABLE_SIZE; i++) {
+        if (status_map_table[i].state == state) {
+            return &status_map_table[i].map;
+        }
+    }
+    return NULL;
+}
 
 /* ================================================================
  * 内部函数
@@ -139,11 +172,11 @@ static ws2812_color_t calculate_rainbow(int64_t elapsed_ms, uint16_t period_ms)
  */
 static void apply_state_color(status_led_state_enum_t state)
 {
-    if (state >= sizeof(status_color_map) / sizeof(status_color_map[0])) {
+    const status_color_map_t *map = find_status_map(state);
+    if (!map) {
         return;
     }
     
-    const status_color_map_t *map = &status_color_map[state];
     int64_t now = get_timestamp_ms();
     
     ws2812_color_t color = map->color;
@@ -241,7 +274,7 @@ esp_err_t status_led_init(const status_led_config_t *config)
     
     /* 初始化 WS2812 驱动 */
     ws2812_config_t ws_config = {
-        .gpio_num = 48,
+        .gpio_num = STATUS_LED_DEFAULT_GPIO,
         .led_count = 1,
         .brightness = g_status.config.brightness,
     };
@@ -302,7 +335,8 @@ esp_err_t status_led_set_state(status_led_state_enum_t state)
         g_status.last_toggle_ms = get_timestamp_ms();
         g_status.led_on = true;
         
-        ESP_LOGD(TAG, "状态切换: %d -> %d", g_status.previous_state, state);
+        /* 关键状态变化使用 INFO 级别日志 */
+        ESP_LOGI(TAG, "状态切换: %d -> %d", g_status.previous_state, state);
     }
     
     xSemaphoreGive(g_status.mutex);

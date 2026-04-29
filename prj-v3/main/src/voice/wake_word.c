@@ -38,6 +38,7 @@ static struct {
     const esp_wn_iface_t *wakenet;
     model_iface_data_t *model_data;
     int audio_chunksize;
+    SemaphoreHandle_t mutex;    /**< 状态保护 mutex */
 } wake_state = {0};
 
 /* 音频缓冲区 */
@@ -87,10 +88,18 @@ int wake_word_init(const wake_word_config_t *config)
         return 0;
     }
     
+    /* 创建状态保护 mutex */
+    wake_state.mutex = xSemaphoreCreateMutex();
+    if (!wake_state.mutex) {
+        ESP_LOGE(TAG, "Failed to create mutex");
+        return -1;
+    }
+    
     /* 创建事件组 */
     wake_event_group = xEventGroupCreate();
     if (!wake_event_group) {
         ESP_LOGE(TAG, "Failed to create event group");
+        vSemaphoreDelete(wake_state.mutex);
         return -1;
     }
     
@@ -103,6 +112,8 @@ int wake_word_init(const wake_word_config_t *config)
     wake_state.wakenet = esp_wn_handle_from_name(DEFAULT_WAKE_WORD_MODEL);
     if (!wake_state.wakenet) {
         ESP_LOGE(TAG, "Failed to get wakenet handle for %s", DEFAULT_WAKE_WORD_MODEL);
+        vEventGroupDelete(wake_event_group);
+        vSemaphoreDelete(wake_state.mutex);
         return -1;
     }
     
@@ -110,6 +121,8 @@ int wake_word_init(const wake_word_config_t *config)
     wake_state.model_data = wake_state.wakenet->create(DEFAULT_WAKE_WORD_MODEL, DET_MODE_90);
     if (!wake_state.model_data) {
         ESP_LOGE(TAG, "Failed to create wakenet model");
+        vEventGroupDelete(wake_event_group);
+        vSemaphoreDelete(wake_state.mutex);
         return -1;
     }
     
@@ -121,6 +134,8 @@ int wake_word_init(const wake_word_config_t *config)
     if (!audio_buf) {
         ESP_LOGE(TAG, "Failed to allocate audio buffer");
         wake_state.wakenet->destroy(wake_state.model_data);
+        vEventGroupDelete(wake_event_group);
+        vSemaphoreDelete(wake_state.mutex);
         return -1;
     }
     
@@ -213,7 +228,14 @@ void wake_word_deinit(void)
         wake_event_group = NULL;
     }
     
-    wake_state.initialized = false;
+    /* 删除 mutex */
+    SemaphoreHandle_t mutex_to_delete = wake_state.mutex;
+    memset(&wake_state, 0, sizeof(wake_state));
+    
+    if (mutex_to_delete) {
+        vSemaphoreDelete(mutex_to_delete);
+    }
+    
     ESP_LOGI(TAG, "Wake word module deinitialized");
 }
 
@@ -222,7 +244,12 @@ bool wake_word_is_awake(void)
     if (!wake_state.initialized) {
         return false;
     }
-    return wake_state.awake;
+    
+    xSemaphoreTake(wake_state.mutex, portMAX_DELAY);
+    bool awake = wake_state.awake;
+    xSemaphoreGive(wake_state.mutex);
+    
+    return awake;
 }
 
 void wake_word_reset(void)
@@ -230,16 +257,22 @@ void wake_word_reset(void)
     if (!wake_state.initialized) {
         return;
     }
+    
+    xSemaphoreTake(wake_state.mutex, portMAX_DELAY);
     wake_state.awake = false;
+    xSemaphoreGive(wake_state.mutex);
+    
     xEventGroupClearBits(wake_event_group, WAKE_WORD_BIT);
 }
 
 void wake_word_set_threshold(float threshold)
 {
+    xSemaphoreTake(wake_state.mutex, portMAX_DELAY);
     wake_state.threshold = threshold;
     if (wake_state.model_data && wake_state.wakenet) {
         wake_state.wakenet->set_det_threshold(wake_state.model_data, threshold, 1);
     }
+    xSemaphoreGive(wake_state.mutex);
 }
 
 float wake_word_get_threshold(void)
@@ -247,5 +280,10 @@ float wake_word_get_threshold(void)
     if (!wake_state.initialized) {
         return 0.0f;
     }
-    return wake_state.threshold;
+    
+    xSemaphoreTake(wake_state.mutex, portMAX_DELAY);
+    float threshold = wake_state.threshold;
+    xSemaphoreGive(wake_state.mutex);
+    
+    return threshold;
 }

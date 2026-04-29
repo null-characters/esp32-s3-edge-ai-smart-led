@@ -23,10 +23,10 @@ static const char *TAG = "ld2410";
 #define LD2410_UART_TX_PIN  8   /* 改为 GPIO8，避免与 DAC (GPIO17/18) 冲突 */
 #define LD2410_UART_RX_PIN  9   /* 改为 GPIO9，避免与 DAC (GPIO17/18) 冲突 */
 #define UART_BUF_SIZE       256
+#define UART_READ_TIMEOUT_MS  100  /* UART 读取超时 */
 
 /* DMA 接收缓冲区 */
-static uint8_t rx_buf[2][UART_BUF_SIZE];
-static int active_buf = 0;
+static uint8_t rx_buf[UART_BUF_SIZE];
 static volatile bool data_ready = false;
 static SemaphoreHandle_t data_mutex;
 static bool g_initialized = false;  /**< 初始化状态 */
@@ -46,7 +46,24 @@ static radar_history_t history_buffer;
 static float distance_filter[FILTER_WINDOW];
 static float velocity_filter[FILTER_WINDOW];
 static float energy_filter[FILTER_WINDOW];
-static int filter_idx = 0;
+static int distance_filter_idx = 0;  /* 距离滤波器独立索引 */
+static int velocity_filter_idx = 0;  /* 速度滤波器独立索引 */
+static int energy_filter_idx = 0;    /* 能量滤波器独立索引 */
+static bool filter_initialized = false;  /* 滤波器是否已用首值初始化 */
+
+/* 呼吸检测阈值参数 */
+#define BREATHING_PERIOD_MIN    0.1f    /* 呼吸周期最小值 (秒) */
+#define BREATHING_PERIOD_MAX    0.5f    /* 呼吸周期最大值 (秒) */
+#define BREATHING_ENERGY_MAX    0.3f    /* 呼吸时最大能量 */
+#define BREATHING_VELOCITY_MAX  0.2f    /* 呼吸时最大速度 */
+
+/* 风扇检测阈值参数 */
+#define FAN_PERIOD_MIN          0.5f    /* 风扇周期最小值 (秒) */
+#define FAN_ENERGY_MIN          0.3f    /* 风扇最小能量 */
+#define FAN_DISTANCE_VAR_MAX    0.1f    /* 风扇时距离方差最大值 */
+
+/* 默认运动周期 */
+#define DEFAULT_MOTION_PERIOD   0.2f    /* 默认运动周期 (秒) */
 
 /**
  * @brief 解析 LD2410 数据帧
@@ -86,18 +103,34 @@ static int parse_frame(const uint8_t *buf, size_t len, ld2410_raw_data_t *data)
 }
 
 /**
- * @brief 滑动平均滤波
+ * @brief 滑动平均滤波 (带独立索引)
+ * @param buffer 滤波缓冲区
+ * @param idx 滤波索引指针
+ * @param new_value 新值
+ * @return 滤波后的平均值
  */
-static float filter_value(float *buffer, float new_value)
+static float filter_value(float *buffer, int *idx, float new_value)
 {
-    buffer[filter_idx] = new_value;
-    filter_idx = (filter_idx + 1) % FILTER_WINDOW;
+    buffer[*idx] = new_value;
+    *idx = (*idx + 1) % FILTER_WINDOW;
     
     float sum = 0;
     for (int i = 0; i < FILTER_WINDOW; i++) {
         sum += buffer[i];
     }
     return sum / FILTER_WINDOW;
+}
+
+/**
+ * @brief 初始化滤波缓冲区 (用首值填充)
+ * @param buffer 滤波缓冲区
+ * @param first_value 第一次测量值
+ */
+static void init_filter_buffer(float *buffer, float first_value)
+{
+    for (int i = 0; i < FILTER_WINDOW; i++) {
+        buffer[i] = first_value;
+    }
 }
 
 /**
@@ -112,12 +145,23 @@ static void normalize_features(const ld2410_raw_data_t *raw,
     features->energy_norm = raw->energy / ENERGY_MAX;
     features->target_count = (float)raw->target_count;
     
-    /* 滤波处理 */
+    /* 首次滤波时用首值初始化缓冲区，避免初始偏差 */
+    if (!filter_initialized) {
+        init_filter_buffer(distance_filter, features->distance_norm);
+        init_filter_buffer(velocity_filter, features->velocity_norm);
+        init_filter_buffer(energy_filter, features->energy_norm);
+        filter_initialized = true;
+    }
+    
+    /* 滤波处理 (使用独立索引) */
     features->distance_norm = filter_value(distance_filter, 
-                                            features->distance_norm);
+                                           &distance_filter_idx,
+                                           features->distance_norm);
     features->velocity_norm = filter_value(velocity_filter, 
-                                            features->velocity_norm);
+                                           &velocity_filter_idx,
+                                           features->velocity_norm);
     features->energy_norm = filter_value(energy_filter, 
+                                          &energy_filter_idx,
                                           features->energy_norm);
     
     /* 扩展特征 */
@@ -173,22 +217,13 @@ int ld2410_init(void)
         return -1;
     }
     
-    /* 启动接收 */
-    int bytes_read = uart_read_bytes(LD2410_UART_NUM, rx_buf[0], UART_BUF_SIZE, 
-                                      pdMS_TO_TICKS(100));
-    if (bytes_read < 0) {
-        ESP_LOGW(TAG, "Initial UART read failed, continuing anyway");
-    }
-    
     /* 初始化历史缓冲 */
     history_buffer.head = 0;
     history_buffer.count = 0;
     history_buffer.last_update = 0;
     
-    /* 初始化滤波缓冲 */
-    memset(distance_filter, 0, sizeof(distance_filter));
-    memset(velocity_filter, 0, sizeof(velocity_filter));
-    memset(energy_filter, 0, sizeof(energy_filter));
+    /* 滤波缓冲区将在首次数据时用首值初始化 */
+    filter_initialized = false;
     
     g_initialized = true;
     
@@ -202,16 +237,18 @@ int ld2410_read_raw(ld2410_raw_data_t *data)
         return -EINVAL;
     }
     
-    if (!data_ready) {
-        return -EAGAIN;
+    /* 直接轮询 UART 接收数据 */
+    int bytes_read = uart_read_bytes(LD2410_UART_NUM, rx_buf, UART_BUF_SIZE, 
+                                      pdMS_TO_TICKS(UART_READ_TIMEOUT_MS));
+    if (bytes_read <= 0) {
+        return -EAGAIN;  /* 无数据 */
     }
     
     xSemaphoreTake(data_mutex, portMAX_DELAY);
     
     /* 解析帧数据 */
-    int ret = parse_frame(rx_buf[(active_buf + 1) % 2], UART_BUF_SIZE, data);
+    int ret = parse_frame(rx_buf, bytes_read, data);
     
-    data_ready = false;
     xSemaphoreGive(data_mutex);
     
     return ret;
@@ -267,7 +304,7 @@ void ld2410_get_history_stats(float *variance, float *period, float *trend)
     
     if (!g_initialized || history_buffer.count < 2) {
         *variance = 0;
-        *period = 0;
+        *period = DEFAULT_MOTION_PERIOD;
         *trend = 0;
         return;
     }
@@ -285,8 +322,8 @@ void ld2410_get_history_stats(float *variance, float *period, float *trend)
     }
     *variance = var / n;
     
-    /* 运动周期 (默认呼吸频率) */
-    *period = 0.2f;
+    /* 运动周期 (使用默认值，后续可扩展为 FFT 计算) */
+    *period = DEFAULT_MOTION_PERIOD;
     
     /* 能量趋势 */
     if (n >= 10) {
@@ -311,10 +348,10 @@ bool ld2410_detect_breathing(void)
         return false;
     }
     
-    if (current_features.motion_period >= 0.1f && 
-        current_features.motion_period <= 0.5f &&
-        current_features.energy_norm < 0.3f &&
-        fabsf(current_features.velocity_norm) < 0.2f) {
+    if (current_features.motion_period >= BREATHING_PERIOD_MIN && 
+        current_features.motion_period <= BREATHING_PERIOD_MAX &&
+        current_features.energy_norm < BREATHING_ENERGY_MAX &&
+        fabsf(current_features.velocity_norm) < BREATHING_VELOCITY_MAX) {
         return true;
     }
     return false;
@@ -326,10 +363,39 @@ bool ld2410_detect_fan(void)
         return false;
     }
     
-    if (current_features.motion_period >= 0.5f &&
-        current_features.energy_norm >= 0.3f &&
-        current_features.distance_variance < 0.1f) {
+    if (current_features.motion_period >= FAN_PERIOD_MIN &&
+        current_features.energy_norm >= FAN_ENERGY_MIN &&
+        current_features.distance_variance < FAN_DISTANCE_VAR_MAX) {
         return true;
     }
     return false;
+}
+
+void ld2410_deinit(void)
+{
+    if (!g_initialized) {
+        return;
+    }
+    
+    g_initialized = false;  /* 先标记，防止重入 */
+    
+    if (data_mutex) {
+        xSemaphoreTake(data_mutex, portMAX_DELAY);
+    }
+    
+    /* 删除 UART 驱动 */
+    uart_driver_delete(LD2410_UART_NUM);
+    
+    /* 清理状态 */
+    filter_initialized = false;
+    history_buffer.head = 0;
+    history_buffer.count = 0;
+    
+    if (data_mutex) {
+        xSemaphoreGive(data_mutex);
+        vSemaphoreDelete(data_mutex);
+        data_mutex = NULL;
+    }
+    
+    ESP_LOGI(TAG, "LD2410 radar driver deinitialized");
 }
