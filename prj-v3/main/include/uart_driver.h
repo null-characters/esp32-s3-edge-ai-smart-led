@@ -57,11 +57,11 @@ int uart_write(const uint8_t *data, size_t len);
 int uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms);
 
 /**
- * @brief 清空 UART 缓冲区
- * 
+ * @brief 清空 UART 接收缓冲区
+ * @note 函数名改为 uart_clear_buffer，避免与 ESP-IDF 5.4+ uart_flush() 冲突
  * @return ESP_OK 成功
  */
-esp_err_t uart_flush(void);
+esp_err_t uart_clear_buffer(void);
 
 /**
  * @brief 获取可用数据长度

@@ -255,5 +255,5 @@ TEST_CASE("invalid_command", "command_handler")
 TEST_CASE("command_words_count", "command_handler")
 {
     /* 验证命令词总数 >= 50 */
-    TEST_ASSERT_TRUE(COMMAND_WORDS_COUNT >= 50);
+    TEST_ASSERT_TRUE(g_command_words_count >= 50);
 }

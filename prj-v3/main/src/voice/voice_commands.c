@@ -150,7 +150,7 @@ int voice_commands_register_all(void)
         return -1;
     }
     
-    ESP_LOGI(TAG, "注册所有命令词 (%d 条)", COMMAND_WORDS_COUNT);
+    ESP_LOGI(TAG, "注册所有命令词 (%zu 条)", g_command_words_count);
     
     /* 分配命令词链表 */
     esp_err_t ret = esp_mn_commands_alloc(g_state.multinet, g_state.model_data);
@@ -161,7 +161,7 @@ int voice_commands_register_all(void)
     
     /* 注册所有命令词 */
     int success_count = 0;
-    for (size_t i = 0; i < COMMAND_WORDS_COUNT; i++) {
+    for (size_t i = 0; i < g_command_words_count; i++) {
         ret = esp_mn_commands_add(g_command_words[i].command_id, 
                                    g_command_words[i].phrase);
         if (ret == ESP_OK) {
@@ -178,7 +178,7 @@ int voice_commands_register_all(void)
         esp_mn_active_commands_print();
     }
     
-    ESP_LOGI(TAG, "命令词注册完成: 成功 %d/%d", success_count, COMMAND_WORDS_COUNT);
+    ESP_LOGI(TAG, "命令词注册完成: 成功 %d/%zu", success_count, g_command_words_count);
     return success_count;
 }
 

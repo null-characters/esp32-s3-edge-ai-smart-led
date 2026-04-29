@@ -124,7 +124,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Configuring watchdog...");
     esp_task_wdt_config_t twdt_config = {
         .timeout_ms = 30000,           /* 30 秒超时 */
-        .idle_tasks_mask = 0,          /* 不监控空闲任务 */
+        .idle_core_mask = 0,           /* 不监控空闲任务 (ESP-IDF 6.1+) */
         .trigger_panic = true,         /* 超时触发 panic */
     };
     esp_err_t ret = esp_task_wdt_init(&twdt_config);

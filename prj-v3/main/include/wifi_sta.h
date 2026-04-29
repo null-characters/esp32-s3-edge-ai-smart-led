@@ -52,10 +52,10 @@ esp_err_t wifi_sta_connect(uint32_t timeout_ms);
 
 /**
  * @brief 断开 Wi-Fi
- * 
+ * @note 函数名改为 app_wifi_sta_disconnect 避免与 ESP-IDF wifi_sta_disconnect 冲突
  * @return ESP_OK 成功
  */
-esp_err_t wifi_sta_disconnect(void);
+esp_err_t app_wifi_sta_disconnect(void);
 
 /**
  * @brief 获取 Wi-Fi 连接状态

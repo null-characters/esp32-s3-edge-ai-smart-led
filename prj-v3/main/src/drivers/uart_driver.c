@@ -147,7 +147,7 @@ int uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms)
     return (int)total_read;
 }
 
-esp_err_t uart_flush(void)
+esp_err_t uart_clear_buffer(void)
 {
     if (!g_initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -172,12 +172,12 @@ esp_err_t my_uart_init(uint32_t baudrate) __attribute__((deprecated("use uart_in
 int my_uart_read(uint8_t *data, size_t len, uint32_t timeout_ms) __attribute__((deprecated("use uart_read instead")));
 int my_uart_write(const uint8_t *data, size_t len) __attribute__((deprecated("use uart_write instead")));
 int my_uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms) __attribute__((deprecated("use uart_read_line instead")));
-esp_err_t my_uart_flush(void) __attribute__((deprecated("use uart_flush instead")));
+esp_err_t my_uart_flush(void) __attribute__((deprecated("use uart_clear_buffer instead")));
 size_t my_uart_available(void) __attribute__((deprecated("use uart_available instead")));
 
 esp_err_t my_uart_init(uint32_t baudrate) { return uart_init(baudrate); }
 int my_uart_read(uint8_t *data, size_t len, uint32_t timeout_ms) { return uart_read(data, len, timeout_ms); }
 int my_uart_write(const uint8_t *data, size_t len) { return uart_write(data, len); }
 int my_uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms) { return uart_read_line(buf, buf_size, timeout_ms); }
-esp_err_t my_uart_flush(void) { return uart_flush(); }
+esp_err_t my_uart_flush(void) { return uart_clear_buffer(); }
 size_t my_uart_available(void) { return uart_available(); }

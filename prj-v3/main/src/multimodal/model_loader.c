@@ -7,9 +7,10 @@
 #include "esp_log.h"
 #include "esp_spiffs.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 #include <stdio.h>
-#include "freertos/semphr.h"
 
 static const char *TAG = "MODEL_LOADER";
 

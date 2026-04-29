@@ -331,7 +331,7 @@ esp_err_t wifi_sta_connect(uint32_t timeout_ms)
     }
 }
 
-esp_err_t wifi_sta_disconnect(void)
+esp_err_t app_wifi_sta_disconnect(void)
 {
     if (!g_initialized) {
         return ESP_ERR_INVALID_STATE;
