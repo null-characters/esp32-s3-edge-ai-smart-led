@@ -24,7 +24,8 @@ except ImportError:
     print("警告: TensorFlow 未安装，部分测试将跳过")
 
 
-MODELS_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
+# 模型文件位于 ai/ 目录下
+MODELS_DIR = os.path.dirname(__file__)
 MODELS = {
     'sound_classifier': {
         'file': 'sound_classifier.tflite',

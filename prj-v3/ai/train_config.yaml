@@ -1,0 +1,106 @@
+# prj-v3 AI 模型训练超参数配置
+# 使用方法: python train_all.py --config train_config.yaml
+
+# 通用训练参数
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+  early_stopping_patience: 10
+  reduce_lr_patience: 5
+  reduce_lr_factor: 0.5
+  min_lr: 0.00001
+  validation_split: 0.2
+  random_seed: 42
+
+# 声音分类器参数
+sound_classifier:
+  input_shape: [40, 32, 1]  # MFCC 特征 (frames, mel_bands, channels)
+  num_classes: 5
+  model_dir: "models"
+  model_name: "sound_classifier.tflite"
+  
+  # CNN 架构
+  conv_filters: [16, 32, 64]
+  kernel_sizes: [3, 3, 3]
+  dense_units: 32
+  dropout_rate: 0.3
+  
+  # 数据增强
+  augmentation:
+    time_stretch_range: [0.9, 1.1]
+    pitch_shift_range: [-2, 2]
+    noise_level: 0.01
+  
+  # 量化参数
+  quantization:
+    representative_samples: 100
+    input_type: "int8"
+    output_type: "int8"
+
+# 雷达编码器参数
+radar_analyzer:
+  input_dim: 8
+  latent_dim: 6
+  model_dir: "models"
+  model_name: "radar_analyzer.tflite"
+  
+  # MLP 架构
+  encoder_units: [32, 16]
+  decoder_units: [16, 32]
+  activation: "relu"
+  
+  # 自编码器训练
+  reconstruction_loss: "mse"
+  
+  # 量化参数
+  quantization:
+    representative_samples: 100
+    input_type: "int8"
+    output_type: "int8"
+
+# 融合模型参数
+fusion_model:
+  input_dim: 19  # 音频特征(5) + 雷达特征(6) + 环境特征(8)
+  output_dim: 2  # 亮度 + 色温
+  model_dir: "models"
+  model_name: "fusion_model.tflite"
+  
+  # MLP 架构
+  hidden_units: [32, 16]
+  activation: "relu"
+  dropout_rate: 0.2
+  
+  # 场景映射
+  scenes:
+    - name: "focus"
+      brightness: 100
+      color_temp: 4000
+    - name: "meeting"
+      brightness: 80
+      color_temp: 4500
+    - name: "presentation"
+      brightness: 100
+      color_temp: 5000
+    - name: "relax"
+      brightness: 50
+      color_temp: 2700
+    - name: "night"
+      brightness: 20
+      color_temp: 2700
+    - name: "empty"
+      brightness: 0
+      color_temp: 4000
+  
+  # 量化参数
+  quantization:
+    representative_samples: 100
+    input_type: "int8"
+    output_type: "int8"
+
+# 日志配置
+logging:
+  log_dir: "logs"
+  save_history: true
+  tensorboard: false
+  verbose: 1
