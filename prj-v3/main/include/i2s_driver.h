@@ -13,18 +13,6 @@
 #include "esp_err.h"
 
 /**
- * @brief I2S 配置参数
- */
-typedef struct {
-    uint32_t sample_rate;     ///< 采样率 (默认 16000)
-    uint8_t bits_per_sample;  ///< 位深 (默认 16)
-    uint8_t channels;         ///< 通道数 (默认 1)
-    int ws_gpio;              ///< Word Select GPIO
-    int sd_gpio;              ///< Serial Data GPIO
-    int clk_gpio;             ///< Clock GPIO
-} i2s_config_t;
-
-/**
  * @brief 初始化 I2S 驱动
  * 
  * @param sample_rate 采样率 (Hz)

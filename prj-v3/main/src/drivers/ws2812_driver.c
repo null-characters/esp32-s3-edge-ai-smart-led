@@ -40,54 +40,6 @@ typedef struct {
 static ws2812_state_t g_ws2812 = {0};
 
 /* ================================================================
- * RMT 编码器
- * ================================================================ */
-
-/**
- * @brief WS2812 字节编码器
- */
-static size_t ws2812_encode(rmt_encoder_t *encoder, rmt_channel_handle_t tx_channel,
-                           const void *primary_data, size_t data_size,
-                           rmt_encode_state_t *ret_state)
-{
-    (void)encoder;
-    (void)tx_channel;
-    
-    rmt_encode_state_t state = 0;
-    size_t encoded_symbols = 0;
-    const uint8_t *data = (const uint8_t *)primary_data;
-    
-    /* 每个 LED 需要 24 bits (GRB 顺序) */
-    for (size_t i = 0; i < data_size; i++) {
-        uint8_t byte = data[i];
-        for (int bit = 7; bit >= 0; bit--) {
-            if (byte & (1 << bit)) {
-                /* 1 码 */
-                rmt_symbol_word_t symbol = {
-                    .level0 = 1,
-                    .duration0 = WS2812_T1H_TICKS,
-                    .level1 = 0,
-                    .duration1 = WS2812_T1L_TICKS,
-                };
-                /* 直接写入编码器缓冲区 */
-            } else {
-                /* 0 码 */
-                rmt_symbol_word_t symbol = {
-                    .level0 = 1,
-                    .duration0 = WS2812_T0H_TICKS,
-                    .level1 = 0,
-                    .duration1 = WS2812_T0L_TICKS,
-                };
-            }
-            encoded_symbols++;
-        }
-    }
-    
-    *ret_state = state;
-    return encoded_symbols;
-}
-
-/* ================================================================
  * 公共 API
  * ================================================================ */
 
@@ -193,7 +145,12 @@ void ws2812_deinit(void)
         return;
     }
     
-    xSemaphoreTake(g_ws2812.mutex, portMAX_DELAY);
+    /* 先标记为未初始化 */
+    g_ws2812.initialized = false;
+    
+    SemaphoreHandle_t mutex_to_delete = g_ws2812.mutex;
+    
+    xSemaphoreTake(mutex_to_delete, portMAX_DELAY);
     
     ws2812_clear();
     ws2812_show();
@@ -203,10 +160,11 @@ void ws2812_deinit(void)
     rmt_del_channel(g_ws2812.tx_channel);
     free(g_ws2812.pixel_buf);
     
-    g_ws2812.initialized = false;
+    /* 清零整个状态结构 */
+    memset(&g_ws2812, 0, sizeof(ws2812_state_t));
     
-    xSemaphoreGive(g_ws2812.mutex);
-    vSemaphoreDelete(g_ws2812.mutex);
+    xSemaphoreGive(mutex_to_delete);
+    vSemaphoreDelete(mutex_to_delete);
     
     ESP_LOGI(TAG, "WS2812 已释放");
 }
@@ -282,8 +240,12 @@ esp_err_t ws2812_show(void)
                                   &tx_config);
     
     if (ret == ESP_OK) {
-        /* 等待传输完成 */
-        rmt_tx_wait_all_done(g_ws2812.tx_channel, 100);
+        /* 等待传输完成，根据 LED 数量动态计算超时 */
+        /* 每个 LED 约 30us，加上安全裕量 */
+        uint32_t timeout_ms = (g_ws2812.led_count * 30 / 1000) + 10;
+        if (timeout_ms < 10) timeout_ms = 10;
+        if (timeout_ms > 1000) timeout_ms = 1000;
+        rmt_tx_wait_all_done(g_ws2812.tx_channel, timeout_ms);
     }
     
     xSemaphoreGive(g_ws2812.mutex);

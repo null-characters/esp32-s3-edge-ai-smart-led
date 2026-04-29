@@ -24,11 +24,15 @@ static const char *TAG = "I2S_DRV";
 #define DMA_BUF_COUNT       16    /* 增加描述符数量防止高采样率数据丢失 */
 #define DMA_BUF_SIZE        1024  /* 增加帧大小 (官方建议最大4092字节) */
 
+/* 静态缓冲区大小：按最大位深(32bit)计算，确保足够 */
+#define DUMMY_BUF_SIZE      (DMA_BUF_SIZE * 4)  /* 32-bit 最大需求 */
+
 static i2s_chan_handle_t g_rx_handle = NULL;
 static uint32_t g_sample_rate = DEFAULT_SAMPLE_RATE;
+static uint8_t g_bits_per_sample = DEFAULT_BITS;
 
-/* 静态缓冲区用于清空DMA (避免栈分配) */
-static int16_t s_dummy_buf[DMA_BUF_SIZE];
+/* 静态缓冲区用于清空DMA (避免栈分配，按最大位深分配) */
+static uint8_t s_dummy_buf[DUMMY_BUF_SIZE];
 
 /* 溢出计数器 (用于监控) */
 static volatile uint32_t g_overflow_count = 0;
@@ -52,6 +56,7 @@ esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
     }
 
     g_sample_rate = sample_rate;
+    g_bits_per_sample = bits_per_sample;
 
     // 创建 I2S 通道
     i2s_chan_config_t chan_conf = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM, I2S_ROLE_MASTER);
@@ -183,10 +188,17 @@ esp_err_t i2s_clear_dma_buffer(void)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* 根据实际位深计算缓冲区大小 */
+    size_t bytes_per_sample = (g_bits_per_sample + 7) / 8;  /* 向上取整 */
+    size_t buf_size = DMA_BUF_SIZE * bytes_per_sample;
+    if (buf_size > DUMMY_BUF_SIZE) {
+        buf_size = DUMMY_BUF_SIZE;
+    }
+
     /* 使用静态缓冲区读取并丢弃数据 */
     size_t bytes_read;
     for (int i = 0; i < DMA_BUF_COUNT; i++) {
-        i2s_channel_read(g_rx_handle, (char *)s_dummy_buf, sizeof(s_dummy_buf), 
+        i2s_channel_read(g_rx_handle, (char *)s_dummy_buf, buf_size, 
                          &bytes_read, pdMS_TO_TICKS(100));
     }
 

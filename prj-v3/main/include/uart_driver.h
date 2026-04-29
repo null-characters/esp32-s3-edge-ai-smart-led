@@ -18,7 +18,14 @@
  * @param baudrate 波特率 (默认 115200)
  * @return ESP_OK 成功
  */
-esp_err_t my_uart_init(uint32_t baudrate);
+esp_err_t uart_init(uint32_t baudrate);
+
+/**
+ * @brief 释放 UART 驱动
+ * 
+ * @return ESP_OK 成功
+ */
+esp_err_t uart_deinit(void);
 
 /**
  * @brief 读取 UART 数据
@@ -26,18 +33,18 @@ esp_err_t my_uart_init(uint32_t baudrate);
  * @param data 数据缓冲区
  * @param len 要读取的字节数
  * @param timeout_ms 超时时间 (毫秒)
- * @return 实际读取的字节数，-1 表示错误
+ * @return 实际读取的字节数，负值表示错误
  */
-int my_uart_read(uint8_t *data, size_t len, uint32_t timeout_ms);
+int uart_read(uint8_t *data, size_t len, uint32_t timeout_ms);
 
 /**
  * @brief 写入 UART 数据
  * 
  * @param data 数据缓冲区
  * @param len 要写入的字节数
- * @return 实际写入的字节数，-1 表示错误
+ * @return 实际写入的字节数，负值表示错误
  */
-int my_uart_write(const uint8_t *data, size_t len);
+int uart_write(const uint8_t *data, size_t len);
 
 /**
  * @brief 读取一行数据 (直到换行符)
@@ -45,22 +52,22 @@ int my_uart_write(const uint8_t *data, size_t len);
  * @param buf 数据缓冲区
  * @param buf_size 缓冲区大小
  * @param timeout_ms 超时时间 (毫秒)
- * @return 实际读取的字节数，-1 表示错误
+ * @return 实际读取的字节数，负值表示错误
  */
-int my_uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms);
+int uart_read_line(uint8_t *buf, size_t buf_size, uint32_t timeout_ms);
 
 /**
  * @brief 清空 UART 缓冲区
  * 
  * @return ESP_OK 成功
  */
-esp_err_t my_uart_flush(void);
+esp_err_t uart_flush(void);
 
 /**
  * @brief 获取可用数据长度
  * 
  * @return RX 缓冲区中的数据字节数
  */
-size_t my_uart_available(void);
+size_t uart_available(void);
 
 #endif /* UART_DRIVER_H */

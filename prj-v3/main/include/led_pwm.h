@@ -12,26 +12,6 @@
 #include "esp_err.h"
 
 /**
- * @brief LED PWM 通道配置
- */
-typedef struct {
-    int gpio;           ///< GPIO 引脚号
-    int channel;        ///< LEDC 通道号
-    int timer;           ///< LEDC 定时器号
-} led_pwm_channel_t;
-
-/**
- * @brief LED PWM 配置参数
- */
-typedef struct {
-    uint32_t freq_hz;                   ///< PWM 频率 (默认 5000Hz)
-    uint16_t brightness_min;            ///< 最小亮度 (0-100%)
-    uint16_t brightness_max;            ///< 最大亮度 (0-100%)
-    uint16_t color_temp_min;            ///< 最小色温 (Kelvin, 默认 2700K)
-    uint16_t color_temp_max;            ///< 最大色温 (Kelvin, 默认 6500K)
-} led_pwm_config_t;
-
-/**
  * @brief 初始化 LED PWM 驱动
  * 
  * @return ESP_OK 成功
@@ -95,5 +75,12 @@ uint8_t led_get_brightness(void);
  * @return 色温值 (Kelvin)
  */
 uint16_t led_get_color_temp(void);
+
+/**
+ * @brief 释放 LED PWM 驱动
+ * 
+ * @return ESP_OK 成功
+ */
+esp_err_t led_pwm_deinit(void);
 
 #endif /* LED_PWM_H */

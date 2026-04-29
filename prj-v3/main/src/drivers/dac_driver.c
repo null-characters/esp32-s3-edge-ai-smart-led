@@ -16,6 +16,9 @@ static const char *TAG = "DAC_DRIVER";
  * 模块状态
  * ================================================================ */
 
+/* 静态缓冲区大小 (用于音量调整，避免频繁 malloc) */
+#define DAC_STATIC_BUF_SIZE    2048  /* 1024 samples * 2 bytes */
+
 typedef struct {
     bool initialized;
     int i2s_port;
@@ -28,6 +31,9 @@ typedef struct {
 } dac_state_t;
 
 static dac_state_t g_dac = {0};
+
+/* 静态缓冲区用于音量调整 (避免高频 malloc) */
+static int16_t s_adjust_buf[DAC_STATIC_BUF_SIZE / sizeof(int16_t)];
 
 /* ================================================================
  * 默认配置
@@ -138,18 +144,25 @@ void dac_deinit(void)
         return;
     }
     
-    xSemaphoreTake(g_dac.mutex, portMAX_DELAY);
+    /* 先标记为未初始化，防止其他任务进入 */
+    g_dac.initialized = false;
+    
+    /* 保存 mutex 句柄，用于后续删除 */
+    SemaphoreHandle_t mutex_to_delete = g_dac.mutex;
+    
+    xSemaphoreTake(mutex_to_delete, portMAX_DELAY);
     
     if (g_dac.tx_handle) {
         i2s_channel_disable(g_dac.tx_handle);
         i2s_del_channel(g_dac.tx_handle);
     }
     
-    if (g_dac.mutex) {
-        vSemaphoreDelete(g_dac.mutex);
-    }
-    
+    /* 清零状态 (mutex 句柄已保存) */
     memset(&g_dac, 0, sizeof(dac_state_t));
+    
+    xSemaphoreGive(mutex_to_delete);
+    vSemaphoreDelete(mutex_to_delete);
+    
     ESP_LOGI(TAG, "DAC 已释放");
 }
 
@@ -159,24 +172,37 @@ esp_err_t dac_write(const int16_t *data, size_t len, size_t *bytes_written)
         return ESP_ERR_INVALID_ARG;
     }
     
+    /* 检查缓冲区大小限制 */
+    if (len > DAC_STATIC_BUF_SIZE) {
+        ESP_LOGW(TAG, "数据过大 %zu > %d，将分块处理", len, DAC_STATIC_BUF_SIZE);
+    }
+    
     xSemaphoreTake(g_dac.mutex, portMAX_DELAY);
     
-    /* 应用音量增益 */
-    int16_t *adjusted_data = (int16_t *)malloc(len);
-    if (!adjusted_data) {
-        xSemaphoreGive(g_dac.mutex);
-        return ESP_ERR_NO_MEM;
-    }
-    
     float gain = g_dac.volume / 100.0f;
-    size_t samples = len / sizeof(int16_t);
-    for (size_t i = 0; i < samples; i++) {
-        adjusted_data[i] = (int16_t)(data[i] * gain);
+    size_t total_written = 0;
+    esp_err_t ret = ESP_OK;
+    
+    /* 分块处理大数据 */
+    size_t offset = 0;
+    while (offset < len && ret == ESP_OK) {
+        size_t chunk_size = (len - offset > DAC_STATIC_BUF_SIZE) ? 
+                            DAC_STATIC_BUF_SIZE : (len - offset);
+        size_t samples = chunk_size / sizeof(int16_t);
+        
+        /* 应用音量增益到静态缓冲区 */
+        for (size_t i = 0; i < samples; i++) {
+            s_adjust_buf[i] = (int16_t)(data[offset / sizeof(int16_t) + i] * gain);
+        }
+        
+        size_t chunk_written;
+        ret = i2s_channel_write(g_dac.tx_handle, s_adjust_buf, chunk_size, 
+                                &chunk_written, 1000);
+        total_written += chunk_written;
+        offset += chunk_size;
     }
     
-    esp_err_t ret = i2s_channel_write(g_dac.tx_handle, adjusted_data, len, bytes_written, 1000);
-    
-    free(adjusted_data);
+    *bytes_written = total_written;
     
     if (!g_dac.playing) {
         g_dac.playing = true;
@@ -194,8 +220,10 @@ esp_err_t dac_play_blocking(const int16_t *data, size_t len)
     esp_err_t ret = dac_write(data, len, &bytes_written);
     
     if (ret == ESP_OK) {
-        /* 等待播放完成 */
-        vTaskDelay(pdMS_TO_TICKS(len * 1000 / (DAC_SAMPLE_RATE * sizeof(int16_t)) + 50));
+        /* 等待播放完成 (使用 uint64_t 防止溢出) */
+        uint32_t delay_ms = (uint32_t)(((uint64_t)len * 1000) / 
+                            ((uint64_t)DAC_SAMPLE_RATE * sizeof(int16_t)) + 50);
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
         
         xSemaphoreTake(g_dac.mutex, portMAX_DELAY);
         g_dac.playing = false;
