@@ -50,6 +50,11 @@ typedef struct {
 int mfcc_init(void);
 
 /**
+ * @brief 释放 MFCC 资源
+ */
+void mfcc_deinit(void);
+
+/**
  * @brief 提取 MFCC 特征
  * @param samples 音频采样数据
  * @param num_samples 采样点数

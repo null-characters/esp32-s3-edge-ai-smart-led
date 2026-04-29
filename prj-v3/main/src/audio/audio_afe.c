@@ -66,6 +66,9 @@ typedef struct {
     TaskHandle_t task_handle;
     volatile bool running;
     TaskHandle_t caller_handle;        /**< 停止调用者任务句柄 */
+    
+    /* 运行时统计 (从任务函数静态变量移入) */
+    uint32_t loop_count;               /**< 循环计数器 */
 } audio_afe_state_t;
 
 static audio_afe_state_t g_state = {0};
@@ -151,8 +154,8 @@ static void audio_afe_task(void *arg)
         }
         
         /* 每1000次循环打印栈水位 (监控栈使用) */
-        static uint32_t loop_count = 0;
-        if (++loop_count % 1000 == 0) {
+        state->loop_count++;
+        if (state->loop_count % 1000 == 0) {
             UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(TAG, "栈水位: %u bytes (使用: %u bytes)", 
                      watermark * sizeof(StackType_t),

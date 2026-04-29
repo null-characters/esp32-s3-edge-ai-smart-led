@@ -36,6 +36,7 @@ static struct {
     /* 配置 */
     int wake_sensitivity;
     float wake_threshold;
+    uint32_t command_timeout_ms;    /**< 命令等待超时时间 (ms) */
     
     /* 回调 */
     audio_event_callback_t event_callback;
@@ -51,6 +52,7 @@ static struct {
     .state = STATE_IDLE,
     .wake_sensitivity = 3,
     .wake_threshold = 0.65f,
+    .command_timeout_ms = 5000,  /* 默认 5 秒 */
 };
 
 /* ================================================================
@@ -118,9 +120,9 @@ static void afe_result_handler(const audio_afe_result_t *result, void *user_data
             break;
             
         case STATE_WAKE_WAIT:
-            /* 等待命令 (超时 5s) */
-            if ((get_timestamp_ms() - g_pipe.last_wake_time_ms) > 5000) {
-                ESP_LOGI(TAG, "命令等待超时，返回空闲");
+            /* 等待命令 (使用配置的超时时间) */
+            if ((get_timestamp_ms() - g_pipe.last_wake_time_ms) > g_pipe.command_timeout_ms) {
+                ESP_LOGI(TAG, "命令等待超时 (%lums)，返回空闲", g_pipe.command_timeout_ms);
                 g_pipe.state = STATE_IDLE;
                 break;
             }
@@ -233,7 +235,10 @@ void audio_pipeline_deinit(void)
     voice_commands_deinit();
     audio_afe_deinit();
     
-    g_pipe.initialized = false;
+    /* 重置所有状态 */
+    memset(&g_pipe, 0, sizeof(g_pipe));
+    g_pipe.state = STATE_IDLE;
+    
     ESP_LOGI(TAG, "音频流水线已释放");
 }
 
@@ -314,4 +319,18 @@ bool audio_pipeline_is_running(void)
         return false;
     }
     return g_pipe.running;
+}
+
+void audio_pipeline_set_command_timeout(uint32_t timeout_ms)
+{
+    if (timeout_ms < 1000) timeout_ms = 1000;   /* 最小 1 秒 */
+    if (timeout_ms > 30000) timeout_ms = 30000; /* 最大 30 秒 */
+    
+    g_pipe.command_timeout_ms = timeout_ms;
+    ESP_LOGI(TAG, "命令等待超时设置为 %lums", timeout_ms);
+}
+
+uint32_t audio_pipeline_get_command_timeout(void)
+{
+    return g_pipe.command_timeout_ms;
 }

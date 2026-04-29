@@ -90,4 +90,16 @@ int audio_pipeline_set_wake_sensitivity(int sensitivity);
  */
 bool audio_pipeline_is_running(void);
 
+/**
+ * @brief 设置命令等待超时时间
+ * @param timeout_ms 超时时间 (毫秒, 范围 1000-30000)
+ */
+void audio_pipeline_set_command_timeout(uint32_t timeout_ms);
+
+/**
+ * @brief 获取命令等待超时时间
+ * @return 超时时间 (毫秒)
+ */
+uint32_t audio_pipeline_get_command_timeout(void);
+
 #endif /* AUDIO_PIPELINE_H */

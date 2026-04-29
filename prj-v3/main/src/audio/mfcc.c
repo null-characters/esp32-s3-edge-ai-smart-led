@@ -9,19 +9,28 @@
 #include <esp_log.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 #include "mfcc.h"
+#include "esp_heap_caps.h"
 
 /* ESP-DSP 头文件 */
 #include "esp_dsp.h"
 
 static const char *TAG = "mfcc";
 
+/* MFCC 动态分配的缓冲区结构 */
+typedef struct {
+    float *pre_emph_buf;           /**< 预加重缓冲 (动态分配) */
+    float (*frames_buf)[MFCC_FRAME_SIZE]; /**< 分帧缓冲 (动态分配) */
+    float *fft_spectrum;          /**< FFT 频谱缓冲区 */
+    float *power_spectrum;        /**< 功率谱缓冲区 */
+    float *mel_spectrum;          /**< Mel 频谱缓冲区 */
+    float *mfcc_coeffs;           /**< MFCC 系数缓冲区 */
+} mfcc_buffers_t;
+
 /* MFCC 状态 */
 static mfcc_state_t mfcc_state;
-
-/* 静态工作缓冲区 (避免栈溢出) */
-static float s_pre_emph_buf[MFCC_SAMPLE_RATE];                    /**< 预加重缓冲 64KB */
-static float s_frames_buf[MFCC_NUM_FRAMES][MFCC_FRAME_SIZE];      /**< 分帧缓冲 51KB */
+static mfcc_buffers_t mfcc_bufs = {0};
 
 /* 预加重系数 */
 #define PRE_EMPH_ALPHA  0.97f
@@ -91,6 +100,48 @@ int mfcc_init(void)
         return 0;
     }
     
+    ESP_LOGI(TAG, "初始化 MFCC 特征提取模块");
+    
+    /* 分配预加重缓冲区 (优先使用 PSRAM) */
+    mfcc_bufs.pre_emph_buf = heap_caps_malloc(
+        MFCC_SAMPLE_RATE * sizeof(float),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+    if (!mfcc_bufs.pre_emph_buf) {
+        /* 回退到内部 RAM */
+        mfcc_bufs.pre_emph_buf = malloc(MFCC_SAMPLE_RATE * sizeof(float));
+        if (!mfcc_bufs.pre_emph_buf) {
+            ESP_LOGE(TAG, "分配预加重缓冲区失败");
+            goto error;
+        }
+        ESP_LOGW(TAG, "预加重缓冲区分配到内部RAM");
+    }
+    
+    /* 分配分帧缓冲区 */
+    mfcc_bufs.frames_buf = heap_caps_malloc(
+        MFCC_NUM_FRAMES * MFCC_FRAME_SIZE * sizeof(float),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+    if (!mfcc_bufs.frames_buf) {
+        mfcc_bufs.frames_buf = malloc(MFCC_NUM_FRAMES * MFCC_FRAME_SIZE * sizeof(float));
+        if (!mfcc_bufs.frames_buf) {
+            ESP_LOGE(TAG, "分配分帧缓冲区失败");
+            goto error;
+        }
+    }
+    
+    /* 分配 FFT 相关缓冲区 (从栈移至堆) */
+    mfcc_bufs.fft_spectrum = malloc(MFCC_FFT_SIZE * sizeof(float));
+    mfcc_bufs.power_spectrum = malloc((MFCC_FFT_SIZE / 2 + 1) * sizeof(float));
+    mfcc_bufs.mel_spectrum = malloc(MFCC_MEL_FILTERS * sizeof(float));
+    mfcc_bufs.mfcc_coeffs = malloc(MFCC_NUM_COEFFS * sizeof(float));
+    
+    if (!mfcc_bufs.fft_spectrum || !mfcc_bufs.power_spectrum || 
+        !mfcc_bufs.mel_spectrum || !mfcc_bufs.mfcc_coeffs) {
+        ESP_LOGE(TAG, "分配 FFT 缓冲区失败");
+        goto error;
+    }
+    
     /* 初始化预加重状态 */
     mfcc_state.pre_emph_last = 0;
     
@@ -107,23 +158,37 @@ int mfcc_init(void)
     }
     
     mfcc_state.initialized = true;
-    ESP_LOGI(TAG, "MFCC extractor initialized");
+    
+    ESP_LOGI(TAG, "MFCC 初始化完成 (预加重: %zu bytes, 分帧: %zu bytes)",
+             MFCC_SAMPLE_RATE * sizeof(float),
+             MFCC_NUM_FRAMES * MFCC_FRAME_SIZE * sizeof(float));
+    
     return 0;
+
+error:
+    mfcc_deinit();
+    return -1;
 }
 
 int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *features)
 {
     if (!mfcc_state.initialized) {
-        mfcc_init();
+        if (mfcc_init() != 0) {
+            return -1;
+        }
     }
     
-    /* 1. 预加重 (使用静态缓冲区) */
-    int pre_len = (num_samples < MFCC_SAMPLE_RATE) ? num_samples : MFCC_SAMPLE_RATE;
-    mfcc_pre_emphasis(samples, s_pre_emph_buf, pre_len, PRE_EMPH_ALPHA);
+    if (!samples || !features) {
+        return -1;
+    }
     
-    /* 2. 分帧 (使用静态缓冲区) */
+    /* 1. 预加重 (使用动态分配缓冲区) */
+    int pre_len = (num_samples < MFCC_SAMPLE_RATE) ? num_samples : MFCC_SAMPLE_RATE;
+    mfcc_pre_emphasis(samples, mfcc_bufs.pre_emph_buf, pre_len, PRE_EMPH_ALPHA);
+    
+    /* 2. 分帧 (使用动态分配缓冲区) */
     int num_frames;
-    mfcc_frame_signal(s_pre_emph_buf, pre_len, s_frames_buf, &num_frames);
+    mfcc_frame_signal(mfcc_bufs.pre_emph_buf, pre_len, mfcc_bufs.frames_buf, &num_frames);
     
     /* 限制帧数 */
     if (num_frames > MFCC_NUM_FRAMES) {
@@ -136,34 +201,30 @@ int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *featu
     /* 3. 逐帧处理 */
     for (int f = 0; f < num_frames; f++) {
         /* 应用汉明窗 */
-        mfcc_apply_window(s_frames_buf[f], MFCC_FRAME_SIZE);
+        mfcc_apply_window(mfcc_bufs.frames_buf[f], MFCC_FRAME_SIZE);
         
-        /* 计算 FFT */
-        float spectrum[MFCC_FFT_SIZE];
-        mfcc_fft(s_frames_buf[f], spectrum, MFCC_FFT_SIZE);
+        /* 计算 FFT (使用动态分配缓冲区) */
+        mfcc_fft(mfcc_bufs.frames_buf[f], mfcc_bufs.fft_spectrum, MFCC_FFT_SIZE);
         
         /* 计算功率谱 */
-        float power[MFCC_FFT_SIZE / 2 + 1];
         for (int i = 0; i < MFCC_FFT_SIZE / 2 + 1; i++) {
-            power[i] = spectrum[i] * spectrum[i];
+            mfcc_bufs.power_spectrum[i] = mfcc_bufs.fft_spectrum[i] * mfcc_bufs.fft_spectrum[i];
         }
         
         /* 应用 Mel 滤波器 */
-        float mel_spectrum[MFCC_MEL_FILTERS];
-        mfcc_apply_mel_filters(power, mel_spectrum, MFCC_FFT_SIZE / 2 + 1);
+        mfcc_apply_mel_filters(mfcc_bufs.power_spectrum, mfcc_bufs.mel_spectrum, MFCC_FFT_SIZE / 2 + 1);
         
         /* 取对数 */
         for (int i = 0; i < MFCC_MEL_FILTERS; i++) {
-            mel_spectrum[i] = logf(mel_spectrum[i] + 1e-10f);
+            mfcc_bufs.mel_spectrum[i] = logf(mfcc_bufs.mel_spectrum[i] + 1e-10f);
         }
         
         /* DCT 变换 */
-        float mfcc[MFCC_NUM_COEFFS];
-        mfcc_dct(mel_spectrum, mfcc, MFCC_MEL_FILTERS);
+        mfcc_dct(mfcc_bufs.mel_spectrum, mfcc_bufs.mfcc_coeffs, MFCC_MEL_FILTERS);
         
         /* 保存结果 */
         for (int i = 0; i < MFCC_NUM_COEFFS; i++) {
-            features->data[i][f] = mfcc[i];
+            features->data[i][f] = mfcc_bufs.mfcc_coeffs[i];
         }
     }
     
@@ -175,6 +236,37 @@ int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *featu
     }
     
     return 0;
+}
+
+void mfcc_deinit(void)
+{
+    if (mfcc_bufs.pre_emph_buf) {
+        free(mfcc_bufs.pre_emph_buf);
+        mfcc_bufs.pre_emph_buf = NULL;
+    }
+    if (mfcc_bufs.frames_buf) {
+        free(mfcc_bufs.frames_buf);
+        mfcc_bufs.frames_buf = NULL;
+    }
+    if (mfcc_bufs.fft_spectrum) {
+        free(mfcc_bufs.fft_spectrum);
+        mfcc_bufs.fft_spectrum = NULL;
+    }
+    if (mfcc_bufs.power_spectrum) {
+        free(mfcc_bufs.power_spectrum);
+        mfcc_bufs.power_spectrum = NULL;
+    }
+    if (mfcc_bufs.mel_spectrum) {
+        free(mfcc_bufs.mel_spectrum);
+        mfcc_bufs.mel_spectrum = NULL;
+    }
+    if (mfcc_bufs.mfcc_coeffs) {
+        free(mfcc_bufs.mfcc_coeffs);
+        mfcc_bufs.mfcc_coeffs = NULL;
+    }
+    
+    mfcc_state.initialized = false;
+    ESP_LOGI(TAG, "MFCC 已释放");
 }
 
 void mfcc_pre_emphasis(const int16_t *input, float *output, int len, float alpha)
