@@ -1,0 +1,12 @@
+# ESP-IDF managed components
+prj-v3/managed_components/
+# Git
+.git/
+# Build outputs
+build/
+build-*/
+# Model files
+*.tflite
+*.bin
+# Audio samples
+*.wav
