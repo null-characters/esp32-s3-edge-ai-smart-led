@@ -15,6 +15,16 @@
 #include "Lighting_Event.h"
 
 /* ================================================================
+ * 配置常量
+ * ================================================================ */
+
+/** 默认租约时长 (2 小时) */
+#define TTL_DEFAULT_MS       (2 * 60 * 60 * 1000)
+
+/** 环境离开释放阈值 (10 分钟) */
+#define TTL_ENV_EXIT_MS      (10 * 60 * 1000)
+
+/* ================================================================
  * 类型定义
  * ================================================================ */
 
@@ -34,8 +44,8 @@ typedef enum {
  */
 typedef enum {
     LEASE_STATE_INACTIVE = 0,       /* 未激活 */
-    LEASE_STATE_ACTIVE = 1,         /* 激活中 (语音锁持有) */
-    LEASE_STATE_EXPIRED = 2,        /* 已过期 */
+    LEASE_STATE_ACTIVE = 1,          /* 激活中 (语音锁持有) */
+    LEASE_STATE_EXPIRED = 2,         /* 已过期 */
     LEASE_STATE_RELEASED = 3,       /* 已释放 */
 } lease_state_t;
 
@@ -47,18 +57,10 @@ typedef enum {
 typedef void (*lease_release_callback_t)(lease_release_reason_t reason, void *user_data);
 
 /**
- * @brief TTL 租约结构
+ * @brief TTL 租约结构 (opaque 类型)
+ * @note 内部实现细节已隐藏，用户只能通过 API 操作
  */
-typedef struct {
-    lease_state_t state;            /* 租约状态 */
-    uint64_t start_time_us;         /* 租约开始时间 (微秒) */
-    uint32_t ttl_ms;                /* 租约时长 (毫秒) */
-    lease_release_reason_t release_reason;  /* 释放原因 */
-    
-    /* 回调 */
-    lease_release_callback_t on_release;
-    void *user_data;
-} ttl_lease_t;
+typedef struct ttl_lease_s ttl_lease_t;
 
 /* ================================================================
  * API 函数声明
@@ -69,6 +71,11 @@ typedef struct {
  * @return ESP_OK 成功
  */
 esp_err_t ttl_lease_init(void);
+
+/**
+ * @brief 释放 TTL 租约模块资源
+ */
+void ttl_lease_deinit(void);
 
 /**
  * @brief 获取租约 (激活语音锁)

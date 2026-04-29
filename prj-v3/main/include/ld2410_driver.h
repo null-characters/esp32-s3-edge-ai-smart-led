@@ -15,6 +15,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
 
 /* LD2410 帧头帧尾定义 */
 #define LD2410_FRAME_HEADER_0   0xF4
@@ -65,23 +66,28 @@ typedef struct {
 
 /**
  * @brief 初始化 LD2410 雷达驱动
- * @return 0 成功, <0 失败
+ * @return ESP_OK 成功, 其他值失败
  */
-int ld2410_init(void);
+esp_err_t ld2410_init(void);
+
+/**
+ * @brief 释放 LD2410 雷达驱动资源
+ */
+void ld2410_deinit(void);
 
 /**
  * @brief 读取雷达原始数据
  * @param data 输出数据指针
- * @return 0 成功, <0 无数据或失败
+ * @return ESP_OK 成功, 其他值无数据或失败
  */
-int ld2410_read_raw(ld2410_raw_data_t *data);
+esp_err_t ld2410_read_raw(ld2410_raw_data_t *data);
 
 /**
  * @brief 获取雷达特征向量 (供 AI 使用)
  * @param features 输出特征向量
- * @return 0 成功
+ * @return ESP_OK 成功
  */
-int ld2410_get_features(radar_features_t *features);
+esp_err_t ld2410_get_features(radar_features_t *features);
 
 /**
  * @brief 更新雷达历史数据

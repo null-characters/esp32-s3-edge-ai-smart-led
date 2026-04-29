@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
 #include "command_words.h"
 
 /* ================================================================
@@ -48,21 +49,21 @@ typedef struct {
 /**
  * @brief 初始化语音命令识别模块
  * @param config 配置参数
- * @return 0 成功, <0 失败
+ * @return ESP_OK 成功, 其他值失败
  */
-int voice_commands_init(const voice_commands_config_t *config);
+esp_err_t voice_commands_init(const voice_commands_config_t *config);
 
 /**
  * @brief 启动命令识别
- * @return 0 成功
+ * @return ESP_OK 成功
  */
-int voice_commands_start(void);
+esp_err_t voice_commands_start(void);
 
 /**
  * @brief 停止命令识别
- * @return 0 成功
+ * @return ESP_OK 成功
  */
-int voice_commands_stop(void);
+esp_err_t voice_commands_stop(void);
 
 /**
  * @brief 释放语音命令模块
@@ -73,15 +74,15 @@ void voice_commands_deinit(void);
  * @brief 添加自定义命令词
  * @param command_id 命令 ID
  * @param phrase 命令词拼音
- * @return 0 成功
+ * @return ESP_OK 成功
  */
-int voice_commands_add_phrase(int command_id, const char *phrase);
+esp_err_t voice_commands_add_phrase(int command_id, const char *phrase);
 
 /**
  * @brief 清除所有自定义命令词
- * @return 0 成功
+ * @return ESP_OK 成功
  */
-int voice_commands_clear_phrases(void);
+esp_err_t voice_commands_clear_phrases(void);
 
 /**
  * @brief 注册所有预定义命令词 (50+ 条)

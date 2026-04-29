@@ -385,7 +385,7 @@ static command_result_t handle_query_command(int command_id)
  * 公共 API
  * ================================================================ */
 
-int command_handler_init(void)
+esp_err_t command_handler_init(void)
 {
     ESP_LOGI(TAG, "初始化命令处理器");
     
@@ -394,7 +394,7 @@ int command_handler_init(void)
         g_state_mutex = xSemaphoreCreateMutex();
         if (!g_state_mutex) {
             ESP_LOGE(TAG, "创建 mutex 失败");
-            return -1;
+            return ESP_ERR_NO_MEM;
         }
     }
     
@@ -403,7 +403,24 @@ int command_handler_init(void)
     g_state.voice_active = false;
     g_state.last_command_time = 0;
     
-    return 0;
+    return ESP_OK;
+}
+
+void command_handler_deinit(void)
+{
+    ESP_LOGI(TAG, "释放命令处理器资源");
+    
+    /* 删除 mutex */
+    if (g_state_mutex) {
+        vSemaphoreDelete(g_state_mutex);
+        g_state_mutex = NULL;
+    }
+    
+    /* 清空回调 */
+    g_callback = NULL;
+    g_user_data = NULL;
+    
+    ESP_LOGI(TAG, "命令处理器已释放");
 }
 
 command_result_t command_handler_process(int command_id)
@@ -472,8 +489,19 @@ void command_handler_set_callback(command_callback_t callback, void *user_data)
     }
 }
 
+system_state_t command_handler_get_state_copy(void)
+{
+    system_state_t copy = {0};
+    if (g_state_mutex && xSemaphoreTake(g_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        copy = g_state;
+        xSemaphoreGive(g_state_mutex);
+    }
+    return copy;
+}
+
 const system_state_t* command_handler_get_state(void)
 {
+    /* 已弃用: 请使用 command_handler_get_state_copy() */
     return &g_state;
 }
 

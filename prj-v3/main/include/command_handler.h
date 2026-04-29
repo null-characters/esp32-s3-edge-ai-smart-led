@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
 #include "command_words.h"
 #include "priority_arbiter.h"  /* 引入 system_mode_t 定义 */
 
@@ -80,9 +81,14 @@ typedef void (*command_callback_t)(int command_id, command_result_t result, void
 
 /**
  * @brief 初始化命令处理器
- * @return 0 成功, <0 失败
+ * @return ESP_OK 成功, 其他值失败
  */
-int command_handler_init(void);
+esp_err_t command_handler_init(void);
+
+/**
+ * @brief 释放命令处理器资源
+ */
+void command_handler_deinit(void);
 
 /**
  * @brief 处理语音命令
@@ -99,8 +105,15 @@ command_result_t command_handler_process(int command_id);
 void command_handler_set_callback(command_callback_t callback, void *user_data);
 
 /**
- * @brief 获取系统状态
+ * @brief 获取系统状态 (线程安全拷贝)
+ * @return 系统状态副本
+ */
+system_state_t command_handler_get_state_copy(void);
+
+/**
+ * @brief 获取系统状态指针 (已弃用，请使用 command_handler_get_state_copy)
  * @return 系统状态指针
+ * @deprecated 使用 command_handler_get_state_copy() 替代
  */
 const system_state_t* command_handler_get_state(void);
 
