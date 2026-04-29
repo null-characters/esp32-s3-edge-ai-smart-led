@@ -64,6 +64,12 @@ esp_err_t audio_router_init(const audio_router_config_t *config);
 void audio_router_deinit(void);
 
 /**
+ * @brief 检查音频路由器是否已初始化
+ * @return true 已初始化
+ */
+bool audio_router_is_initialized(void);
+
+/**
  * @brief 路由音频数据
  * @param samples 音频数据
  * @param len 数据长度 (样本数)

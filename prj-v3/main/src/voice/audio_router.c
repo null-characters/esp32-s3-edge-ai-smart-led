@@ -91,6 +91,11 @@ void audio_router_deinit(void)
     ESP_LOGI(TAG, "音频路由器已释放");
 }
 
+bool audio_router_is_initialized(void)
+{
+    return g_router.initialized;
+}
+
 audio_route_target_t audio_router_route(const int16_t *samples, int len)
 {
     if (!g_router.initialized || !samples) {
