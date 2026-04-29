@@ -14,6 +14,13 @@
 static const char *TAG = "ENV_WATCHER";
 
 /* ================================================================
+ * 配置常量
+ * ================================================================ */
+
+/* 雷达数据过期阈值倍数 (相对于检查间隔) */
+#define RADAR_EXPIRE_MULTIPLIER  2
+
+/* ================================================================
  * 模块状态
  * ================================================================ */
 
@@ -53,10 +60,18 @@ static env_watcher_state_t g_env = {0};
  * 内部函数
  * ================================================================ */
 
+/**
+ * @brief 定时器回调 - 使用非阻塞方式获取状态
+ * @note 由于定时器回调中不应阻塞，我们采用以下策略：
+ *       1. 使用非阻塞获取锁
+ *       2. 如果获取失败，下次定时器触发时会重试
+ *       3. 状态检查任务负责实际的状态更新
+ */
 static void check_timer_callback(void *arg)
 {
     /* 使用非阻塞获取，定时器回调中不应阻塞 */
-    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(5)) != pdTRUE) {
+    if (xSemaphoreTake(g_env.mutex, 0) != pdTRUE) {
+        /* 获取锁失败，下次重试 */
         return;
     }
     
@@ -66,10 +81,11 @@ static void check_timer_callback(void *arg)
     }
     
     uint64_t now_us = esp_timer_get_time();
-    
-    /* 检查雷达数据是否过期 */
-    if (now_us - g_env.radar_update_time_us > (uint64_t)g_env.check_interval_ms * 2000ULL) {
-        /* 雷达数据超过 2 个检查周期未更新，视为无人 */
+
+    /* 检查雷达数据是否过期 (使用配置的过期倍数) */
+    uint64_t expire_threshold_us = (uint64_t)g_env.check_interval_ms * 1000ULL * RADAR_EXPIRE_MULTIPLIER;
+    if (now_us - g_env.radar_update_time_us > expire_threshold_us) {
+        /* 雷达数据过期，视为无人 */
         g_env.radar_presence = false;
     }
     
@@ -209,6 +225,9 @@ esp_err_t env_watcher_start(void)
     }
     
     ESP_LOGI(TAG, "启动环境监听");
+    
+    /* 先停止定时器（如果已启动），避免重复启动错误 */
+    esp_timer_stop(g_env.check_timer);
     
     esp_err_t ret = esp_timer_start_periodic(g_env.check_timer, g_env.check_interval_ms * 1000);
     if (ret != ESP_OK) {

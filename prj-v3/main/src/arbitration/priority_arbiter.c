@@ -86,6 +86,98 @@ static led_decision_t create_default_decision(void)
 }
 
 /**
+ * @brief 根据语音命令 ID 创建决策
+ * @param command_id 命令 ID (对应 voice_commands.h)
+ * @return 对应的控制决策
+ */
+static led_decision_t create_decision_from_command(int command_id)
+{
+    led_decision_t decision = {
+        .source = DECISION_SOURCE_VOICE,
+        .timestamp_ms = get_timestamp_ms(),
+    };
+    
+    /* 根据命令 ID 映射到控制参数
+     * 命令 ID 定义参考 voice_commands.h
+     * 1-10: 开关/亮度控制
+     * 11-20: 色温控制
+     * 21-30: 场景控制
+     */
+    switch (command_id) {
+        case 1:  /* 开灯 */
+            decision.power = true;
+            decision.brightness = 50;
+            decision.color_temp = 4000;
+            break;
+        case 2:  /* 关灯 */
+            decision.power = false;
+            break;
+        case 3:  /* 亮度调高 */
+            decision.power = true;
+            decision.brightness = 80;
+            decision.color_temp = 4000;
+            break;
+        case 4:  /* 亮度调低 */
+            decision.power = true;
+            decision.brightness = 20;
+            decision.color_temp = 4000;
+            break;
+        case 5:  /* 最亮 */
+            decision.power = true;
+            decision.brightness = 100;
+            decision.color_temp = 4000;
+            break;
+        case 6:  /* 最暗 */
+            decision.power = true;
+            decision.brightness = 5;
+            decision.color_temp = 4000;
+            break;
+        case 11:  /* 暖光 */
+            decision.power = true;
+            decision.brightness = 50;
+            decision.color_temp = 2700;
+            break;
+        case 12:  /* 冷光 */
+            decision.power = true;
+            decision.brightness = 50;
+            decision.color_temp = 6500;
+            break;
+        case 13:  /* 自然光 */
+            decision.power = true;
+            decision.brightness = 50;
+            decision.color_temp = 4000;
+            break;
+        case 21:  /* 阅读模式 */
+            decision.power = true;
+            decision.brightness = 80;
+            decision.color_temp = 5000;
+            decision.scene_id = 1;
+            break;
+        case 22:  /* 夜灯模式 */
+            decision.power = true;
+            decision.brightness = 10;
+            decision.color_temp = 2700;
+            decision.scene_id = 2;
+            break;
+        case 23:  /* 放松模式 */
+            decision.power = true;
+            decision.brightness = 30;
+            decision.color_temp = 3000;
+            decision.scene_id = 3;
+            break;
+        default:
+            /* 未知命令，使用默认值 */
+            decision.power = true;
+            decision.brightness = 50;
+            decision.color_temp = 4000;
+            ESP_LOGW(TAG, "未知命令 ID: %d，使用默认决策", command_id);
+            break;
+    }
+    
+    return decision;
+}
+
+/**
  * @brief 从 NVS 加载状态
  */
 static esp_err_t load_state_from_nvs(system_mode_t *mode, led_decision_t *decision)
@@ -93,17 +185,24 @@ static esp_err_t load_state_from_nvs(system_mode_t *mode, led_decision_t *decisi
     nvs_handle_t handle;
     esp_err_t ret = nvs_open("arbiter", NVS_READONLY, &handle);
     if (ret != ESP_OK) {
+        /* NVS 打开失败，使用默认值 */
+        ESP_LOGW(TAG, "NVS 打开失败，使用默认模式");
+        *mode = MODE_AUTO;
         return ret;
     }
     
     uint8_t mode_val = 0;
-    ret = nvs_get_u8(handle, "mode", &mode_val);
-    if (ret == ESP_OK) {
+    esp_err_t mode_ret = nvs_get_u8(handle, "mode", &mode_val);
+    if (mode_ret == ESP_OK) {
         *mode = (system_mode_t)mode_val;
+    } else {
+        /* 未找到存储的模式，使用默认值 */
+        ESP_LOGW(TAG, "NVS 未找到模式，使用默认值");
+        *mode = MODE_AUTO;
     }
     
     nvs_close(handle);
-    return ret;
+    return ESP_OK;  /* 返回成功，即使读取失败也已有默认值 */
 }
 
 /**
@@ -281,17 +380,24 @@ esp_err_t priority_arbiter_submit_voice(int command_id, float confidence)
     
     xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
     
+    /* 根据命令 ID 创建完整的控制决策 */
     g_arbiter.voice_input.valid = true;
     g_arbiter.voice_input.command_id = command_id;
     g_arbiter.voice_input.confidence = confidence;
-    g_arbiter.voice_input.decision.source = DECISION_SOURCE_VOICE;
-    g_arbiter.voice_input.decision.timestamp_ms = get_timestamp_ms();
+    g_arbiter.voice_input.decision = create_decision_from_command(command_id);
     
     /* 切换到手动模式 */
     g_arbiter.current_mode = MODE_MANUAL;
     g_arbiter.last_voice_time_ms = get_timestamp_ms();
     
-    ESP_LOGI(TAG, "语音命令: id=%d, conf=%.2f", command_id, confidence);
+    /* 更新当前决策 */
+    g_arbiter.current_decision = g_arbiter.voice_input.decision;
+    
+    ESP_LOGI(TAG, "语音命令: id=%d, conf=%.2f, power=%d, brightness=%d, color_temp=%d",
+             command_id, confidence,
+             g_arbiter.voice_input.decision.power,
+             g_arbiter.voice_input.decision.brightness,
+             g_arbiter.voice_input.decision.color_temp);
     
     xSemaphoreGive(g_arbiter.mutex);
     
