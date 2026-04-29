@@ -315,11 +315,12 @@ esp_err_t led_pwm_deinit(void)
     if (mutex_to_delete) {
         xSemaphoreTake(mutex_to_delete, portMAX_DELAY);
         ledc_fade_func_uninstall();
-        ledc_stop(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS);
-        ledc_stop(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP);
-        ledc_stop(LEDC_MODE, LEDC_CHANNEL_R);
-        ledc_stop(LEDC_MODE, LEDC_CHANNEL_G);
-        ledc_stop(LEDC_MODE, LEDC_CHANNEL_B);
+        /* ESP-IDF 5.4+ ledc_stop 需要 idle_level 参数 */
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL_BRIGHTNESS, 0);
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL_COLOR_TEMP, 0);
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL_R, 0);
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL_G, 0);
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL_B, 0);
         xSemaphoreGive(mutex_to_delete);
         vSemaphoreDelete(mutex_to_delete);
     }
