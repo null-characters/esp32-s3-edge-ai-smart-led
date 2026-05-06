@@ -4,6 +4,7 @@
  */
 
 #include "Lighting_Controller.h"
+#include "config_constants.h"
 #include "Lighting_Event.h"
 #include "led_pwm.h"
 #include "priority_arbiter.h"
@@ -104,9 +105,9 @@ static void apply_color_temp(const color_temp_config_t *config)
     if (config->relative) {
         /* 暖/冷切换 */
         if (config->direction < 0) {
-            target = 2700;  /* 暖光 */
+            target = COLOR_TEMP_WARM_K;  /* 暖光 */
         } else {
-            target = 6500;  /* 冷光 */
+            target = COLOR_TEMP_COOL_K;  /* 冷光 */
         }
     } else {
         target = config->value;
@@ -196,7 +197,10 @@ static void controller_task(void *arg)
     
     while (g_ctrl.running) {
         if (xQueueReceive(g_ctrl.event_queue, &event, pdMS_TO_TICKS(100)) == pdTRUE) {
-            xSemaphoreTake(g_ctrl.mutex, portMAX_DELAY);
+            if (xSemaphoreTake(g_ctrl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+                ESP_LOGW(TAG, "获取互斥锁超时");
+                continue;
+            }
             process_event(&event);
             xSemaphoreGive(g_ctrl.mutex);
         }
@@ -324,7 +328,7 @@ esp_err_t lighting_controller_stop(void)
     g_ctrl.running = false;
     
     if (g_ctrl.task_handle) {
-        vTaskDelay(pdMS_TO_TICKS(200));  /* 等待任务退出 */
+        vTaskDelay(pdMS_TO_TICKS(TASK_STOP_WAIT_MS));  /* 等待任务退出 */
         g_ctrl.task_handle = NULL;
     }
     
@@ -386,9 +390,26 @@ esp_err_t lighting_controller_submit_auto_event(scene_id_t scene_id, float confi
 
 void lighting_controller_get_state(uint8_t *brightness, uint16_t *color_temp, bool *power)
 {
+    if (!g_ctrl.initialized) {
+        if (brightness) *brightness = 0;
+        if (color_temp) *color_temp = 0;
+        if (power) *power = false;
+        return;
+    }
+    
+    if (xSemaphoreTake(g_ctrl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取状态时互斥锁超时");
+        if (brightness) *brightness = 0;
+        if (color_temp) *color_temp = 0;
+        if (power) *power = false;
+        return;
+    }
+    
     if (brightness) *brightness = g_ctrl.current_brightness;
     if (color_temp) *color_temp = g_ctrl.current_color_temp;
     if (power) *power = g_ctrl.current_power;
+    
+    xSemaphoreGive(g_ctrl.mutex);
 }
 
 bool lighting_controller_is_auto_mode(void)

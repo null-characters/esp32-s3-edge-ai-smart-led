@@ -6,6 +6,7 @@
  */
 
 #include "audio_afe.h"
+#include "config_constants.h"
 #include "i2s_driver.h"
 #include "esp_log.h"
 #include "esp_afe_config.h"
@@ -159,7 +160,7 @@ static void audio_afe_task(void *arg)
             UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(TAG, "栈水位: %u bytes (使用: %u bytes)", 
                      watermark * sizeof(StackType_t),
-                     (16 * 1024) - watermark * sizeof(StackType_t));
+                     AFE_TASK_STACK_SIZE - watermark * sizeof(StackType_t));
         }
     }
     
@@ -167,7 +168,7 @@ static void audio_afe_task(void *arg)
     UBaseType_t final_watermark = uxTaskGetStackHighWaterMark(NULL);
     ESP_LOGI(TAG, "最终栈水位: %u bytes (峰值使用: %u bytes)", 
              final_watermark * sizeof(StackType_t),
-             (16 * 1024) - final_watermark * sizeof(StackType_t));
+             AFE_TASK_STACK_SIZE - final_watermark * sizeof(StackType_t));
     
     ESP_LOGI(TAG, "音频处理任务退出");
     
@@ -388,9 +389,9 @@ int audio_afe_start(void)
     BaseType_t ret = xTaskCreatePinnedToCore(
         audio_afe_task,
         "audio_afe",
-        16 * 1024,  /* 16KB 栈 (ESP-SR AFE需要较大栈空间) */
+        AFE_TASK_STACK_SIZE / sizeof(StackType_t),  /* ESP-SR AFE需要较大栈空间 */
         &g_state,
-        5,  /* 优先级 */
+        AFE_TASK_PRIORITY,
         &g_state.task_handle,
         1   /* 绑定到核心 1 */
     );
@@ -492,7 +493,10 @@ bool audio_afe_fetch(audio_afe_result_t *result)
 void audio_afe_set_callback(audio_afe_callback_t callback, void *user_data)
 {
     if (g_state.callback_mutex) {
-        xSemaphoreTake(g_state.callback_mutex, portMAX_DELAY);
+        if (xSemaphoreTake(g_state.callback_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+            ESP_LOGW(TAG, "获取回调 mutex 超时");
+            return;
+        }
     }
     g_state.callback = callback;
     g_state.user_data = user_data;
@@ -548,9 +552,9 @@ int audio_afe_set_wakenet_threshold(float threshold)
     }
     
     if (g_state.afe_iface && g_state.afe_data) {
-        /* threshold 范围: 0.4 - 0.9999 */
-        if (threshold < 0.4f) threshold = 0.4f;
-        if (threshold > 0.9999f) threshold = 0.9999f;
+        /* threshold 范围: WAKENET_THRESHOLD_MIN - WAKENET_THRESHOLD_MAX */
+        if (threshold < WAKENET_THRESHOLD_MIN) threshold = WAKENET_THRESHOLD_MIN;
+        if (threshold > WAKENET_THRESHOLD_MAX) threshold = WAKENET_THRESHOLD_MAX;
         
         g_state.afe_iface->set_wakenet_threshold(g_state.afe_data, 1, threshold);
         ESP_LOGI(TAG, "唤醒阈值设置为 %.4f", threshold);

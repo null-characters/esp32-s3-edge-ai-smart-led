@@ -4,6 +4,7 @@
  */
 
 #include "model_loader.h"
+#include "config_constants.h"
 #include "esp_log.h"
 #include "esp_spiffs.h"
 #include "esp_heap_caps.h"
@@ -22,9 +23,6 @@ static const char *TAG = "MODEL_LOADER";
 #define MODEL_PATH_SOUND    "/spiffs/models/sound_classifier.tflite"
 #define MODEL_PATH_RADAR    "/spiffs/models/radar_analyzer.tflite"
 #define MODEL_PATH_FUSION   "/spiffs/models/fusion_model.tflite"
-
-/* 分块读取大小 */
-#define MODEL_CHUNK_SIZE    4096
 
 /**
  * @brief 模型信息结构体
@@ -197,7 +195,10 @@ void model_loader_deinit(void)
         return;
     }
     
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取 mutex 超时");
+        return;
+    }
     
     /* 卸载所有模型 */
     for (int i = 0; i < MODEL_TYPE_MAX; i++) {
@@ -232,7 +233,9 @@ esp_err_t model_loader_load(model_type_t type, model_load_callback_t callback, v
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     model_info_t *model = &g_models[type];
     
@@ -261,7 +264,9 @@ esp_err_t model_loader_unload(model_type_t type)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     model_info_t *model = &g_models[type];
     
@@ -293,7 +298,9 @@ esp_err_t model_loader_get(model_type_t type, uint8_t **data, size_t *size)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     model_info_t *model = &g_models[type];
     

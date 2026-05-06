@@ -4,6 +4,7 @@
  */
 
 #include "env_watcher.h"
+#include "config_constants.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -12,13 +13,6 @@
 #include <string.h>
 
 static const char *TAG = "ENV_WATCHER";
-
-/* ================================================================
- * 配置常量
- * ================================================================ */
-
-/* 雷达数据过期阈值倍数 (相对于检查间隔) */
-#define RADAR_EXPIRE_MULTIPLIER  2
 
 /* ================================================================
  * 模块状态
@@ -116,7 +110,7 @@ static void check_timer_callback(void *arg)
         
         /* 检查是否超过阈值 */
         if (g_env.absent_ms >= g_env.absent_threshold_ms) {
-            ESP_LOGI(TAG, "人离开超过阈值: %lu 分钟", g_env.absent_ms / 60000);
+            ESP_LOGI(TAG, "人离开超过阈值: %lu 分钟", g_env.absent_ms / MS_PER_MINUTE);
             
             /* 准备回调信息 */
             callback = g_env.callback;
@@ -189,7 +183,7 @@ esp_err_t env_watcher_init(const env_watcher_config_t *config)
     g_env.initialized = true;
     g_env.running = false;
     
-    ESP_LOGI(TAG, "环境监听初始化完成: threshold=%lu 分钟", g_env.absent_threshold_ms / 60000);
+    ESP_LOGI(TAG, "环境监听初始化完成: threshold=%lu 分钟", g_env.absent_threshold_ms / MS_PER_MINUTE);
     
     return ESP_OK;
 }
@@ -264,7 +258,9 @@ esp_err_t env_watcher_update_radar(bool presence, float distance, float energy)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     g_env.radar_presence = presence;
     g_env.radar_distance = distance;
@@ -282,7 +278,9 @@ env_state_t env_watcher_get_state(void)
         return ENV_STATE_UNKNOWN;
     }
     
-    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ENV_STATE_UNKNOWN;
+    }
     env_state_t state = g_env.current_state;
     xSemaphoreGive(g_env.mutex);
     
@@ -295,7 +293,9 @@ uint32_t env_watcher_get_absent_time_ms(void)
         return 0;
     }
     
-    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return 0;
+    }
     uint32_t absent_ms = g_env.absent_ms;
     xSemaphoreGive(g_env.mutex);
     
@@ -308,7 +308,9 @@ void env_watcher_set_callback(env_change_callback_t callback, void *user_data)
         return;
     }
     
-    xSemaphoreTake(g_env.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_env.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return;
+    }
     g_env.callback = callback;
     g_env.user_data = user_data;
     xSemaphoreGive(g_env.mutex);

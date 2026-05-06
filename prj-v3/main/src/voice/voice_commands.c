@@ -4,6 +4,7 @@
  */
 
 #include "voice_commands.h"
+#include "config_constants.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -66,11 +67,11 @@ int voice_commands_init(const voice_commands_config_t *config)
     }
     
     /* 设置阈值 */
-    g_state.threshold = config->threshold > 0 ? config->threshold : 0.5f;
+    g_state.threshold = config->threshold > 0 ? config->threshold : WAKENET_THRESHOLD_DEFAULT;
     g_state.multinet->set_det_threshold(g_state.model_data, g_state.threshold);
     
     /* 保存配置 */
-    g_state.timeout_ms = config->timeout_ms > 0 ? config->timeout_ms : 5000;
+    g_state.timeout_ms = config->timeout_ms > 0 ? config->timeout_ms : CMD_TIMEOUT_DEFAULT_MS;
     g_state.callback = config->callback;
     g_state.user_data = config->user_data;
     

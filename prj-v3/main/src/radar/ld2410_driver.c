@@ -14,14 +14,15 @@
 #include <math.h>
 #include <errno.h>
 #include "ld2410_driver.h"
+#include "config_constants.h"
 
 static const char *TAG = "ld2410";
 
 /* UART 配置 */
 #define LD2410_UART_NUM     UART_NUM_1
-#define LD2410_UART_BAUD    256000
-#define LD2410_UART_TX_PIN  8   /* 改为 GPIO8，避免与 DAC (GPIO17/18) 冲突 */
-#define LD2410_UART_RX_PIN  9   /* 改为 GPIO9，避免与 DAC (GPIO17/18) 冲突 */
+#define LD2410_UART_BAUD    RADAR_UART_BAUD_RATE
+#define LD2410_UART_TX_PIN  RADAR_UART_TX_PIN
+#define LD2410_UART_RX_PIN  RADAR_UART_RX_PIN
 #define UART_BUF_SIZE       256
 #define UART_READ_TIMEOUT_MS  100  /* UART 读取超时 */
 
@@ -37,9 +38,9 @@ static radar_features_t current_features;
 static radar_history_t history_buffer;
 
 /* 归一化参数 */
-#define DISTANCE_MAX    8.0f    /* 最大距离 8m */
+#define DISTANCE_MAX    RADAR_DISTANCE_MAX_M
 #define VELOCITY_MAX    5.0f    /* 最大速度 5m/s */
-#define ENERGY_MAX      100.0f  /* 最大能量 */
+#define ENERGY_MAX      RADAR_ENERGY_MAX
 
 /* 滑动平均滤波窗口 */
 #define FILTER_WINDOW   5
@@ -244,7 +245,9 @@ int ld2410_read_raw(ld2410_raw_data_t *data)
         return -EAGAIN;  /* 无数据 */
     }
     
-    xSemaphoreTake(data_mutex, portMAX_DELAY);
+    if (xSemaphoreTake(data_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return -EBUSY;
+    }
     
     /* 解析帧数据 */
     int ret = parse_frame(rx_buf, bytes_read, data);
@@ -380,7 +383,9 @@ void ld2410_deinit(void)
     g_initialized = false;  /* 先标记，防止重入 */
     
     if (data_mutex) {
-        xSemaphoreTake(data_mutex, portMAX_DELAY);
+        if (xSemaphoreTake(data_mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+            ESP_LOGW(TAG, "获取 mutex 超时");
+        }
     }
     
     /* 删除 UART 驱动 */

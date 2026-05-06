@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "mfcc.h"
+#include "config_constants.h"
 #include "esp_heap_caps.h"
 
 /* ESP-DSP 头文件 */
@@ -35,10 +36,6 @@ static mfcc_buffers_t mfcc_bufs = {0};
 /* 预加重系数 */
 #define PRE_EMPH_ALPHA  0.97f
 
-/* Mel 滤波器参数 */
-#define MEL_LOW_FREQ    0.0f
-#define MEL_HIGH_FREQ   8000.0f
-
 /**
  * @brief 初始化汉明窗
  */
@@ -54,8 +51,8 @@ static void init_hamming_window(void)
  */
 static void init_mel_filters(void)
 {
-    float mel_low = mfcc_hz_to_mel(MEL_LOW_FREQ);
-    float mel_high = mfcc_hz_to_mel(MEL_HIGH_FREQ);
+    float mel_low = mfcc_hz_to_mel(MEL_LOW_FREQ_HZ);
+    float mel_high = mfcc_hz_to_mel(MEL_HIGH_FREQ_HZ);
     float mel_step = (mel_high - mel_low) / (MFCC_MEL_FILTERS + 1);
     
     /* 计算每个滤波器的中心频率 */
@@ -216,7 +213,7 @@ int mfcc_extract(const int16_t *samples, int num_samples, mfcc_features_t *featu
         
         /* 取对数 */
         for (int i = 0; i < MFCC_MEL_FILTERS; i++) {
-            mfcc_bufs.mel_spectrum[i] = logf(mfcc_bufs.mel_spectrum[i] + 1e-10f);
+            mfcc_bufs.mel_spectrum[i] = logf(mfcc_bufs.mel_spectrum[i] + LOG_FLOOR_VALUE);
         }
         
         /* DCT 变换 */

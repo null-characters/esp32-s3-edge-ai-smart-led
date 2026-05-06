@@ -4,6 +4,7 @@
  */
 
 #include "wifi_sta.h"
+#include "config_constants.h"
 #include "status_led.h"
 #include <string.h>
 #include "esp_wifi.h"
@@ -21,10 +22,6 @@ static const char *TAG = "WIFI_STA";
 /* Wi-Fi 事件位 */
 #define WIFI_CONNECTED_BIT     BIT0
 #define WIFI_DISCONNECTED_BIT  BIT1
-
-/* 配置 */
-#define WIFI_MAX_RETRY         5
-#define WIFI_RETRY_DELAY_MS    1000
 
 static EventGroupHandle_t g_wifi_event_group = NULL;
 static wifi_sta_state_t g_wifi_state = WIFI_STA_DISCONNECTED;
@@ -44,9 +41,9 @@ static void retry_timer_callback(void *arg)
     if (g_retry_count < WIFI_MAX_RETRY) {
         ESP_LOGI(TAG, "Retry connecting (%d/%d)", g_retry_count + 1, WIFI_MAX_RETRY);
         esp_wifi_connect();
-        g_retry_count++;
         
         if (xSemaphoreTake(g_wifi_mutex, 0) == pdTRUE) {
+            g_retry_count++;
             g_wifi_state = WIFI_STA_CONNECTING;
             xSemaphoreGive(g_wifi_mutex);
         }

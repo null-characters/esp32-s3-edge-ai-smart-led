@@ -4,6 +4,7 @@
  */
 
 #include "command_handler.h"
+#include "config_constants.h"
 #include "led_pwm.h"
 #include "tts_engine.h"
 #include "esp_log.h"
@@ -203,22 +204,22 @@ static command_result_t handle_cct_command(int command_id)
     
     switch (command_id) {
         case CMD_CCT_WARM:
-            color_temp = 2700;
+            color_temp = COLOR_TEMP_WARM_K;
             break;
         case CMD_CCT_COOL:
-            color_temp = 6500;
+            color_temp = COLOR_TEMP_COOL_K;
             break;
         case CMD_CCT_WHITE:
             color_temp = 5000;
             break;
         case CMD_CCT_NATURAL:
-            color_temp = 4000;
+            color_temp = COLOR_TEMP_DEFAULT_K;
             break;
         case CMD_CCT_WARMER:
-            color_temp = (color_temp <= 2800) ? 2700 : color_temp - 300;
+            color_temp = (color_temp <= 2800) ? COLOR_TEMP_WARM_K : color_temp - COLOR_TEMP_STEP_K;
             break;
         case CMD_CCT_COOLER:
-            color_temp = (color_temp >= 6200) ? 6500 : color_temp + 300;
+            color_temp = (color_temp >= 6200) ? COLOR_TEMP_COOL_K : color_temp + COLOR_TEMP_STEP_K;
             break;
         default:
             return CMD_RESULT_INVALID;

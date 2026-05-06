@@ -6,6 +6,7 @@
  */
 
 #include "audio_pipeline.h"
+#include "config_constants.h"
 #include "audio_afe.h"
 #include "voice_commands.h"
 #include "command_handler.h"
@@ -52,7 +53,7 @@ static struct {
     .state = STATE_IDLE,
     .wake_sensitivity = 3,
     .wake_threshold = 0.65f,
-    .command_timeout_ms = 5000,  /* 默认 5 秒 */
+    .command_timeout_ms = CMD_TIMEOUT_DEFAULT_MS,
 };
 
 /* ================================================================
@@ -323,8 +324,8 @@ bool audio_pipeline_is_running(void)
 
 void audio_pipeline_set_command_timeout(uint32_t timeout_ms)
 {
-    if (timeout_ms < 1000) timeout_ms = 1000;   /* 最小 1 秒 */
-    if (timeout_ms > 30000) timeout_ms = 30000; /* 最大 30 秒 */
+    if (timeout_ms < CMD_TIMEOUT_MIN_MS) timeout_ms = CMD_TIMEOUT_MIN_MS;
+    if (timeout_ms > CMD_TIMEOUT_MAX_MS) timeout_ms = CMD_TIMEOUT_MAX_MS;
     
     g_pipe.command_timeout_ms = timeout_ms;
     ESP_LOGI(TAG, "命令等待超时设置为 %lums", timeout_ms);

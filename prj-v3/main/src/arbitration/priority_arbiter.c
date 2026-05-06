@@ -6,6 +6,7 @@
  */
 
 #include "priority_arbiter.h"
+#include "config_constants.h"
 #include "status_led.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -217,7 +218,12 @@ static esp_err_t save_state_to_nvs(system_mode_t mode)
     }
     
     ret = nvs_set_u8(handle, "mode", (uint8_t)mode);
-    nvs_commit(handle);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(handle);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "NVS commit 失败: %s", esp_err_to_name(ret));
+        }
+    }
     nvs_close(handle);
     
     return ret;
@@ -331,12 +337,15 @@ decision_source_t priority_arbiter_decide(const voice_input_t *voice,
         return DECISION_SOURCE_NONE;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取互斥锁超时");
+        return DECISION_SOURCE_NONE;
+    }
     
     decision_source_t source = DECISION_SOURCE_DEFAULT;
     
     /* 优先级: 语音 > 自动 > 默认 */
-    if (voice && voice->valid && voice->confidence > 0.5f) {
+    if (voice && voice->valid && voice->confidence > VOICE_CONFIDENCE_THRESHOLD) {
         /* 语音命令优先 */
         *output = voice->decision;
         output->source = DECISION_SOURCE_VOICE;
@@ -378,7 +387,9 @@ esp_err_t priority_arbiter_submit_voice(int command_id, float confidence)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     /* 根据命令 ID 创建完整的控制决策 */
     g_arbiter.voice_input.valid = true;
@@ -410,7 +421,9 @@ esp_err_t priority_arbiter_submit_auto(uint8_t scene_id, float confidence)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     /* 仅在自动模式下接受自动控制 */
     if (g_arbiter.current_mode == MODE_AUTO) {
@@ -440,7 +453,9 @@ bool priority_arbiter_get_decision(led_decision_t *output)
         return false;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return false;
+    }
     *output = g_arbiter.current_decision;
     xSemaphoreGive(g_arbiter.mutex);
     
@@ -459,7 +474,9 @@ esp_err_t priority_arbiter_set_mode(system_mode_t mode)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     g_arbiter.current_mode = mode;
     g_arbiter.mode_start_time_ms = get_timestamp_ms();
@@ -488,7 +505,9 @@ void priority_arbiter_reset_timeout(void)
         return;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return;
+    }
     g_arbiter.last_voice_time_ms = get_timestamp_ms();
     xSemaphoreGive(g_arbiter.mutex);
 }
@@ -499,7 +518,9 @@ int32_t priority_arbiter_get_timeout_remaining(void)
         return -1;
     }
     
-    xSemaphoreTake(g_arbiter.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_arbiter.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return -1;
+    }
     int64_t elapsed = get_timestamp_ms() - g_arbiter.last_voice_time_ms;
     int32_t remaining = (int32_t)(g_arbiter.config.manual_timeout_ms - elapsed);
     xSemaphoreGive(g_arbiter.mutex);

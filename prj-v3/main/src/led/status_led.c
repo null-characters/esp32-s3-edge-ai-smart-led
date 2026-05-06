@@ -4,6 +4,7 @@
  */
 
 #include "status_led.h"
+#include "config_constants.h"
 #include "ws2812_driver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -132,7 +133,7 @@ static uint8_t calculate_breath_brightness(int64_t elapsed_ms, uint16_t period_m
 {
     /* 正弦波呼吸效果 */
     float phase = (float)(elapsed_ms % period_ms) / period_ms;
-    float brightness = (sinf(phase * 2 * 3.14159f) + 1.0f) / 2.0f;
+    float brightness = (sinf(phase * 2 * (float)M_PI) + 1.0f) / 2.0f;
     return (uint8_t)(brightness * 255);
 }
 
@@ -217,7 +218,10 @@ static void status_led_task(void *arg)
     ESP_LOGI(TAG, "状态指示灯任务启动");
     
     while (g_status.running) {
-        xSemaphoreTake(g_status.mutex, portMAX_DELAY);
+        if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+            vTaskDelay(pdMS_TO_TICKS(STATUS_LED_UPDATE_INTERVAL_MS));
+            continue;
+        }
         
         status_led_state_enum_t state = g_status.current_state;
         
@@ -235,7 +239,7 @@ static void status_led_task(void *arg)
         xSemaphoreGive(g_status.mutex);
         
         /* 更新间隔 */
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(STATUS_LED_UPDATE_INTERVAL_MS));
     }
     
     ESP_LOGI(TAG, "状态指示灯任务停止");
@@ -308,7 +312,9 @@ void status_led_deinit(void)
     /* 停止后台任务 */
     status_led_stop();
     
-    xSemaphoreTake(g_status.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取 mutex 超时");
+    }
     
     ws2812_deinit();
     
@@ -326,7 +332,9 @@ esp_err_t status_led_set_state(status_led_state_enum_t state)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_status.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     if (state != g_status.current_state) {
         g_status.previous_state = g_status.current_state;
@@ -346,7 +354,18 @@ esp_err_t status_led_set_state(status_led_state_enum_t state)
 
 status_led_state_enum_t status_led_get_state(void)
 {
-    return g_status.current_state;
+    if (!g_status.initialized) {
+        return STATUS_LED_ERROR;
+    }
+    
+    status_led_state_enum_t state;
+    if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) == pdTRUE) {
+        state = g_status.current_state;
+        xSemaphoreGive(g_status.mutex);
+    } else {
+        state = STATUS_LED_ERROR;
+    }
+    return state;
 }
 
 void status_led_update_wifi(wifi_sta_state_t wifi_state)
@@ -420,7 +439,10 @@ void status_led_show_result(bool success, uint32_t duration_ms)
         return;
     }
     
-    xSemaphoreTake(g_status.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取 mutex 超时");
+        return;
+    }
     
     g_status.previous_state = g_status.current_state;
     g_status.current_state = success ? STATUS_LED_VOICE_SUCCESS : STATUS_LED_VOICE_ERROR;
@@ -448,9 +470,9 @@ void status_led_start(void)
     BaseType_t ret = xTaskCreate(
         status_led_task,
         "status_led",
-        2048,
+        STATUS_LED_TASK_STACK_SIZE / sizeof(StackType_t),
         NULL,
-        5,  /* 低优先级 */
+        STATUS_LED_TASK_PRIORITY,
         &g_status.task_handle
     );
     
@@ -480,7 +502,10 @@ void status_led_refresh(void)
         return;
     }
     
-    xSemaphoreTake(g_status.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_status.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "获取 mutex 超时");
+        return;
+    }
     apply_state_color(g_status.current_state);
     xSemaphoreGive(g_status.mutex);
 }

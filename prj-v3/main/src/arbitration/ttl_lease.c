@@ -6,6 +6,7 @@
  */
 
 #include "ttl_lease.h"
+#include "config_constants.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -127,7 +128,9 @@ esp_err_t ttl_lease_acquire(uint32_t ttl_ms)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     if (g_ttl.lease.state == LEASE_STATE_ACTIVE) {
         ESP_LOGW(TAG, "已有活跃租约，拒绝新租约");
@@ -159,7 +162,9 @@ esp_err_t ttl_lease_renew(uint32_t ttl_ms)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     if (g_ttl.lease.state != LEASE_STATE_ACTIVE) {
         xSemaphoreGive(g_ttl.mutex);
@@ -190,7 +195,9 @@ esp_err_t ttl_lease_release(lease_release_reason_t reason)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     if (g_ttl.lease.state != LEASE_STATE_ACTIVE) {
         xSemaphoreGive(g_ttl.mutex);
@@ -222,7 +229,9 @@ bool ttl_lease_check_expired(void)
         return false;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return false;
+    }
     
     if (g_ttl.lease.state != LEASE_STATE_ACTIVE) {
         xSemaphoreGive(g_ttl.mutex);
@@ -281,7 +290,9 @@ lease_state_t ttl_lease_get_state(void)
         return LEASE_STATE_INACTIVE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return LEASE_STATE_INACTIVE;
+    }
     lease_state_t state = g_ttl.lease.state;
     xSemaphoreGive(g_ttl.mutex);
     
@@ -290,11 +301,18 @@ lease_state_t ttl_lease_get_state(void)
 
 int64_t ttl_lease_get_remaining_ms(void)
 {
-    if (!g_ttl.initialized || g_ttl.lease.state != LEASE_STATE_ACTIVE) {
+    if (!g_ttl.initialized) {
         return -1;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return -1;
+    }
+    
+    if (g_ttl.lease.state != LEASE_STATE_ACTIVE) {
+        xSemaphoreGive(g_ttl.mutex);
+        return -1;
+    }
     
     int64_t elapsed_ms = (get_time_us() - g_ttl.lease.start_time_us) / 1000;
     int64_t remaining = g_ttl.lease.ttl_ms - elapsed_ms;
@@ -310,7 +328,9 @@ lease_release_reason_t ttl_lease_get_release_reason(void)
         return LEASE_RELEASE_NONE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return LEASE_RELEASE_NONE;
+    }
     lease_release_reason_t reason = g_ttl.lease.release_reason;
     xSemaphoreGive(g_ttl.mutex);
     
@@ -323,7 +343,9 @@ void ttl_lease_set_callback(lease_release_callback_t callback, void *user_data)
         return;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return;
+    }
     g_ttl.lease.on_release = callback;
     g_ttl.lease.user_data = user_data;
     xSemaphoreGive(g_ttl.mutex);
@@ -335,7 +357,9 @@ esp_err_t ttl_lease_notify_env_change(uint32_t absent_ms)
         return ESP_ERR_INVALID_STATE;
     }
     
-    xSemaphoreTake(g_ttl.mutex, portMAX_DELAY);
+    if (xSemaphoreTake(g_ttl.mutex, pdMS_TO_TICKS(DEFAULT_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
     
     if (g_ttl.lease.state != LEASE_STATE_ACTIVE) {
         xSemaphoreGive(g_ttl.mutex);
