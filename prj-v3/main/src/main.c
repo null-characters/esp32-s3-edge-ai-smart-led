@@ -150,15 +150,15 @@ void app_main(void)
     }
 
     /* ============================================================
-     * 2. 初始化 LED PWM 驱动
+     * 2. 初始化电源板驱动
      * ============================================================ */
-    ESP_LOGI(TAG, "[2/12] Initializing LED PWM driver...");
-    ret = led_pwm_init();
+    ESP_LOGI(TAG, "[2/12] Initializing power board driver...");
+    ret = power_board_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "LED PWM init failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Power board init failed: %s", esp_err_to_name(ret));
     } else {
-        ESP_LOGI(TAG, "LED PWM initialized successfully");
-        led_fade_to_brightness(50, 1000);
+        ESP_LOGI(TAG, "Power board initialized successfully");
+        boost_enable();
         led_set_color_temp(4000);
     }
 
@@ -343,8 +343,8 @@ void app_main(void)
         /* 每 30 秒打印一次系统状态 */
         if (loop_count % 6 == 0) {
             ESP_LOGI(TAG, "System running for %.1f seconds", get_uptime_seconds());
-            ESP_LOGI(TAG, "  LED: brightness=%d%%, color_temp=%dK",
-                     led_get_brightness(), led_get_color_temp());
+            ESP_LOGI(TAG, "  LED: warm=%d%%, cold=%d%%, color_temp=%dK",
+                     cct_get_warm_duty(), cct_get_cold_duty(), cct_get_color_temp());
             ESP_LOGI(TAG, "  Wi-Fi: state=%d", wifi_sta_get_state());
             ESP_LOGI(TAG, "  Mode: %d", priority_arbiter_get_mode());
             

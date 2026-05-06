@@ -38,6 +38,9 @@ extern void run_test_command_handler(void);
 /* TTS 引擎测试 */
 extern void run_test_tts_engine(void);
 
+/* 电源板驱动测试 */
+extern void run_test_power_board(void);
+
 /**
  * @brief 系统级集成测试
  */
@@ -77,6 +80,9 @@ void test_performance_benchmark(void)
  */
 static void register_tests(void)
 {
+    /* 电源板驱动测试 */
+    run_test_power_board();
+    
     /* 系统级测试 */
     RUN_TEST(test_system_integration);
     RUN_TEST(test_performance_benchmark);
