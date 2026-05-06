@@ -146,7 +146,6 @@ static ws2812_color_t calculate_rainbow(int64_t elapsed_ms, uint16_t period_ms)
     float h = phase * 360.0f;
     
     /* HSV to RGB (S=1, V=1) */
-    float c = 1.0f;
     float x = 1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f);
     
     ws2812_color_t color = {0};

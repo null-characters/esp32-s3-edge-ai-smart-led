@@ -96,7 +96,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "Wi-Fi connected to AP");
-                g_retry_count = 0;
+                if (xSemaphoreTake(g_wifi_mutex, 0) == pdTRUE) {
+                    g_retry_count = 0;
+                    xSemaphoreGive(g_wifi_mutex);
+                }
                 break;
 
             case WIFI_EVENT_STA_DISCONNECTED:
