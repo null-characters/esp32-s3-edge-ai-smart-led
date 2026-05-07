@@ -1,6 +1,6 @@
 /**
  * @file boost_debug_test.c
- * @brief Boost升压调试测试 - 简化实现
+ * @brief 电源板调试测试 - Boost升压 + 色温控制
  */
 
 #include "boost_debug_test.h"
@@ -13,7 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "BOOST_DBG";
+static const char *TAG = "POWER_DBG";
 
 /* LEDC配置 (与led_pwm.c一致) */
 #define BOOST_LEDC_TIMER    LEDC_TIMER_0
@@ -24,7 +24,7 @@ static const char *TAG = "BOOST_DBG";
  * 内部函数
  * ======================================================================== */
 
-#if BOOST_DEBUG_STAGE > 0
+#if TEST_STAGE > 0 && TEST_STAGE < 4
 /* PWM tick 范围 (10-bit: 0-1023) */
 #define BOOST_PWM_TICK_MAX   1023
 #define BOOST_PWM_TICK_MIN   30    /* ≈3% */
@@ -48,10 +48,10 @@ static void set_duty(uint8_t percent)
 #endif
 
 /* ========================================================================
- * 测试任务
+ * Boost测试任务 (阶段1-3)
  * ======================================================================== */
 
-#if BOOST_DEBUG_STAGE == 1
+#if TEST_STAGE == 1
 static void stage1_task(void *arg)
 {
     ESP_LOGI(TAG, "=== 阶段1: 固定PWM测试 ===");
@@ -67,7 +67,7 @@ static void stage1_task(void *arg)
 }
 #endif
 
-#if BOOST_DEBUG_STAGE == 2
+#if TEST_STAGE == 2
 static void stage2_task(void *arg)
 {
     ESP_LOGI(TAG, "=== 阶段2: 滞环控制 ===");
@@ -94,7 +94,7 @@ static void stage2_task(void *arg)
 }
 #endif
 
-#if BOOST_DEBUG_STAGE == 3
+#if TEST_STAGE == 3
 static boost_pi_context_t g_boost_pi;
 
 static void stage3_task(void *arg)
@@ -102,11 +102,7 @@ static void stage3_task(void *arg)
     ESP_LOGI(TAG, "=== 阶段3: PI控制 (PWM tick精度) ===");
     ESP_LOGI(TAG, "目标: %d mV", BOOST_DEBUG_TARGET_MV);
     
-    /* PWM tick 精度控制
-     * OutMin=30 (≈3%), OutMax=870 (≈85%)
-     * Kp=10: 每1000mV误差调整10 tick (≈1%)
-     * Ki=50: 积分作用
-     */
+    /* PWM tick 精度控制 */
     boost_pi_init(&g_boost_pi, 10, 50, 870, 30, 2300);
     
     uint16_t duty_tick = BOOST_PWM_TICK_MIN;
@@ -125,82 +121,51 @@ static void stage3_task(void *arg)
 }
 #endif
 
-#if BOOST_DEBUG_STAGE == 4
-/* 按键开关状态 */
-static bool g_boost_enabled = false;
-static bool g_btn_pressed = false;
-static uint32_t g_btn_press_time = 0;
+/* ========================================================================
+ * 色温渐变测试 (阶段4)
+ * ======================================================================== */
 
-static void stage4_task(void *arg)
+#if TEST_STAGE == 4
+static void cct_test_task(void *arg)
 {
-    ESP_LOGI(TAG, "=== 阶段4: 按键开关模式 ===");
-    ESP_LOGI(TAG, "短按Boot按键(GPIO%d)切换输出状态", BOOST_DEBUG_BTN_GPIO);
-    ESP_LOGI(TAG, "初始状态: 输出关闭");
+    ESP_LOGI(TAG, "=== 阶段4: 色温渐变测试 ===");
+    ESP_LOGI(TAG, "范围: %dK ~ %dK, 周期: %dms", 
+             CCT_TEST_MIN_KELVIN, CCT_TEST_MAX_KELVIN, CCT_TEST_CYCLE_MS);
     
-    /* 初始化Boot按键GPIO */
-    gpio_config_t btn_cfg = {
-        .pin_bit_mask = 1ULL << BOOST_DEBUG_BTN_GPIO,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&btn_cfg);
+    /* 启用Boost升压 */
+    boost_enable();
+    ESP_LOGI(TAG, "Boost已启用，目标电压: %d mV", BOOST_DEBUG_TARGET_MV);
     
-    /* 初始状态：关闭输出 */
-    set_duty(0);
+    /* 等待电压稳定 */
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    uint16_t current_kelvin = CCT_TEST_MIN_KELVIN;
+    int16_t step = 10;  /* 每50ms变化10K */
     
     while (1) {
-        /* 检测按键 (按下时GPIO为低电平) */
-        int btn_level = gpio_get_level(BOOST_DEBUG_BTN_GPIO);
-        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        /* 设置色温 */
+        led_set_color_temp(current_kelvin);
         
-        if (btn_level == 0 && !g_btn_pressed) {
-            /* 按键按下 */
-            g_btn_pressed = true;
-            g_btn_press_time = now;
-            ESP_LOGI(TAG, "按键按下...");
-        } else if (btn_level == 1 && g_btn_pressed) {
-            /* 按键释放 */
-            g_btn_pressed = false;
-            uint32_t press_duration = now - g_btn_press_time;
-            
-            /* 短按 (<1秒): 切换开关状态 */
-            if (press_duration < 1000) {
-                g_boost_enabled = !g_boost_enabled;
-                
-                if (g_boost_enabled) {
-                    ESP_LOGI(TAG, ">>> 输出开启 (滞环控制)");
-                    ESP_LOGI(TAG, "目标: %d mV ± %d mV", BOOST_DEBUG_TARGET_MV, BOOST_DEBUG_WINDOW_MV);
-                } else {
-                    ESP_LOGI(TAG, ">>> 输出关闭");
-                    set_duty(0);
-                }
-            }
+        /* 读取电压和当前色温 */
+        uint16_t v = boost_read_voltage();
+        uint8_t warm = cct_get_warm_duty();
+        uint8_t cold = cct_get_cold_duty();
+        
+        ESP_LOGI(TAG, "V=%d mV, CCT=%dK, W=%d%%, C=%d%%", v, current_kelvin, warm, cold);
+        
+        /* 渐变：暖白 → 冷白 → 暖白 */
+        current_kelvin += step;
+        
+        /* 到达边界时反向 */
+        if (current_kelvin >= CCT_TEST_MAX_KELVIN) {
+            current_kelvin = CCT_TEST_MAX_KELVIN;
+            step = -step;
+        } else if (current_kelvin <= CCT_TEST_MIN_KELVIN) {
+            current_kelvin = CCT_TEST_MIN_KELVIN;
+            step = -step;
         }
         
-        /* 如果开启，执行滞环控制 */
-        if (g_boost_enabled) {
-            uint16_t v = boost_read_voltage();
-            int16_t err = BOOST_DEBUG_TARGET_MV - v;
-            uint8_t duty;
-            
-            /* 获取当前占空比 */
-            duty = (ledc_get_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL) * 100) / 1023;
-            
-            if (err > BOOST_DEBUG_WINDOW_MV && duty < BOOST_MAX_DUTY_PERCENT) {
-                duty++;
-                set_duty(duty);
-            } else if (err < -BOOST_DEBUG_WINDOW_MV && duty > BOOST_MIN_DUTY_PERCENT) {
-                duty--;
-                set_duty(duty);
-            }
-            
-            ESP_LOGI(TAG, "V=%d mV, Err=%d mV, Duty=%d%%, 状态=%s", 
-                     v, err, duty, g_boost_enabled ? "ON" : "OFF");
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(CCT_TEST_STEP_MS));
     }
 }
 #endif
@@ -211,11 +176,11 @@ static void stage4_task(void *arg)
 
 esp_err_t boost_debug_test_init(void)
 {
-#if BOOST_DEBUG_STAGE == 0
-    ESP_LOGI(TAG, "Boost调试测试已禁用 (BOOST_DEBUG_STAGE=0)");
+#if TEST_STAGE == 0
+    ESP_LOGI(TAG, "调试测试已禁用 (TEST_STAGE=0)");
     return ESP_OK;
 #else
-    ESP_LOGI(TAG, "初始化Boost调试测试，阶段=%d", BOOST_DEBUG_STAGE);
+    ESP_LOGI(TAG, "初始化调试测试，阶段=%d", TEST_STAGE);
     
     esp_err_t ret = power_board_init();
     if (ret != ESP_OK) {
@@ -224,14 +189,14 @@ esp_err_t boost_debug_test_init(void)
     }
     
     /* 根据阶段创建任务 */
-#if BOOST_DEBUG_STAGE == 1
-    xTaskCreate(stage1_task, "boost_s1", 3072, NULL, 5, NULL);
-#elif BOOST_DEBUG_STAGE == 2
-    xTaskCreate(stage2_task, "boost_s2", 3072, NULL, 5, NULL);
-#elif BOOST_DEBUG_STAGE == 3
-    xTaskCreate(stage3_task, "boost_s3", 3072, NULL, 5, NULL);
-#elif BOOST_DEBUG_STAGE == 4
-    xTaskCreate(stage4_task, "boost_s4", 3072, NULL, 5, NULL);
+#if TEST_STAGE == 1
+    xTaskCreate(stage1_task, "test_s1", 3072, NULL, 5, NULL);
+#elif TEST_STAGE == 2
+    xTaskCreate(stage2_task, "test_s2", 3072, NULL, 5, NULL);
+#elif TEST_STAGE == 3
+    xTaskCreate(stage3_task, "test_s3", 3072, NULL, 5, NULL);
+#elif TEST_STAGE == 4
+    xTaskCreate(cct_test_task, "test_cct", 3072, NULL, 5, NULL);
 #endif
 
     return ESP_OK;
