@@ -18,7 +18,7 @@
  * 调试宏配置 - 修改此处选择测试阶段
  * ======================================================================== */
 #ifndef BOOST_DEBUG_STAGE
-#define BOOST_DEBUG_STAGE       4   /* 0=禁用, 1=固定PWM, 2=滞环, 3=PID, 4=按键开关 */
+#define BOOST_DEBUG_STAGE       3   /* 0=禁用, 1=固定PWM, 2=滞环, 3=PID, 4=按键开关 */
 #endif
 
 /* Boot按键GPIO (ESP32-S3 DevKitC) */
@@ -27,9 +27,9 @@
 /* 阶段1: 固定PWM参数 */
 #define BOOST_DEBUG_FIXED_DUTY  50  /* 占空比 % */
 
-/* 阶段2: 滞环参数 */
-#define BOOST_DEBUG_TARGET_MV   24000   /* 目标电压 mV */
-#define BOOST_DEBUG_WINDOW_MV    500     /* 滞环窗口 ±mV */
+/* 阶段2/3: 目标电压 */
+#define BOOST_DEBUG_TARGET_MV   23000   /* 目标电压 mV (硬件压降补偿) */
+#define BOOST_DEBUG_WINDOW_MV    200     /* 滞环窗口 ±mV (仅阶段2使用) */
 
 /* 阶段3: PID使用led_pwm.c中的默认参数 */
 

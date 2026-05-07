@@ -6,6 +6,7 @@
 #include "boost_debug_test.h"
 #include "led_pwm.h"
 #include "config_constants.h"
+#include "boost_pi_q15.h"
 #include "esp_log.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
@@ -23,15 +24,17 @@ static const char *TAG = "BOOST_DBG";
  * 内部函数
  * ======================================================================== */
 
-#if BOOST_DEBUG_STAGE > 0 && BOOST_DEBUG_STAGE != 3
-static void set_duty(uint8_t percent)
+#if BOOST_DEBUG_STAGE > 0
+/* PWM tick 范围 (10-bit: 0-1023) */
+#define BOOST_PWM_TICK_MAX   1023
+#define BOOST_PWM_TICK_MIN   30    /* ≈3% */
+
+static void set_duty_tick(uint16_t tick)
 {
-    if (percent > 100) percent = 100;
-    if (percent < BOOST_MIN_DUTY_PERCENT && percent > 0) percent = BOOST_MIN_DUTY_PERCENT;
-    if (percent > BOOST_MAX_DUTY_PERCENT) percent = BOOST_MAX_DUTY_PERCENT;
+    if (tick > BOOST_PWM_TICK_MAX) tick = BOOST_PWM_TICK_MAX;
+    if (tick < BOOST_PWM_TICK_MIN && tick > 0) tick = BOOST_PWM_TICK_MIN;
     
-    uint32_t raw = (percent * 1023) / 100;
-    ledc_set_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL, raw);
+    ledc_set_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL, tick);
     ledc_update_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL);
 }
 #endif
@@ -84,21 +87,32 @@ static void stage2_task(void *arg)
 #endif
 
 #if BOOST_DEBUG_STAGE == 3
+static boost_pi_context_t g_boost_pi;
+
 static void stage3_task(void *arg)
 {
-    ESP_LOGI(TAG, "=== 阶段3: PID控制 ===");
+    ESP_LOGI(TAG, "=== 阶段3: PI控制 (PWM tick精度) ===");
     ESP_LOGI(TAG, "目标: %d mV", BOOST_DEBUG_TARGET_MV);
     
-    boost_set_voltage(BOOST_DEBUG_TARGET_MV);
-    boost_pid_start();
+    /* PWM tick 精度控制
+     * OutMin=30 (≈3%), OutMax=870 (≈85%)
+     * Kp=10: 每1000mV误差调整10 tick (≈1%)
+     * Ki=50: 积分作用
+     */
+    boost_pi_init(&g_boost_pi, 10, 50, 870, 30, 2300);
+    
+    uint16_t duty_tick = BOOST_PWM_TICK_MIN;
+    set_duty_tick(duty_tick);
     
     while (1) {
-        uint16_t v;
-        uint8_t d;
-        int16_t e;
-        boost_pid_get_status(&v, &d, &e);
-        ESP_LOGI(TAG, "V=%d mV, Err=%d mV, Duty=%d%%", v, e, d);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        uint16_t v = boost_read_voltage();
+        duty_tick = (uint16_t)boost_pi_calculate(&g_boost_pi, BOOST_DEBUG_TARGET_MV, v);
+        set_duty_tick(duty_tick);
+        
+        uint8_t duty_percent = (duty_tick * 100) / 1023;
+        ESP_LOGI(TAG, "V=%d mV, Err=%d mV, Tick=%d (%d%%)", 
+                 v, BOOST_DEBUG_TARGET_MV - v, duty_tick, duty_percent);
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 #endif

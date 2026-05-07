@@ -41,6 +41,9 @@ extern void run_test_tts_engine(void);
 /* 电源板驱动测试 */
 extern void run_test_power_board(void);
 
+/* Boost PI控制器测试 */
+extern void run_test_boost_pi(void);
+
 /**
  * @brief 系统级集成测试
  */
@@ -82,6 +85,9 @@ static void register_tests(void)
 {
     /* 电源板驱动测试 */
     run_test_power_board();
+    
+    /* Boost PI控制器测试 */
+    run_test_boost_pi();
     
     /* 系统级测试 */
     RUN_TEST(test_system_integration);

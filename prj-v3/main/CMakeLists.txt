@@ -25,6 +25,7 @@ idf_component_register(
          "src/arbitration/env_watcher.c"
          # 控制层
          "src/control/Lighting_Controller.c"
+         "src/control/boost_pi_q15.c"
          # 语音交互
          "src/voice/wake_word.c"
          "src/voice/command_handler.c"
