@@ -37,6 +37,14 @@ static void set_duty_tick(uint16_t tick)
     ledc_set_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL, tick);
     ledc_update_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL);
 }
+
+/* 兼容旧阶段：百分比转tick */
+static void set_duty(uint8_t percent)
+{
+    if (percent > 100) percent = 100;
+    uint16_t tick = (percent * 1023) / 100;
+    set_duty_tick(tick);
+}
 #endif
 
 /* ========================================================================
