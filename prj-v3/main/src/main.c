@@ -24,6 +24,7 @@
 #include "env_watcher.h"
 #include "priority_arbiter.h"
 #include "Lighting_Controller.h"
+#include "boost_debug_test.h"
 
 static const char *TAG = "MAIN";
 
@@ -147,6 +148,23 @@ void app_main(void)
         ESP_LOGI(TAG, "Status LED initialized (booting...)");
         status_led_set_state(STATUS_LED_BOOTING);
         status_led_start();
+    }
+
+    /* ============================================================
+     * Boost调试测试 (如果启用，跳过其他初始化)
+     * ============================================================ */
+    if (boost_debug_is_enabled()) {
+        ESP_LOGI(TAG, "=== BOOST DEBUG MODE ENABLED ===");
+        ret = boost_debug_test_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Boost debug test init failed: %s", esp_err_to_name(ret));
+        }
+        /* 进入简单主循环，只喂看门狗 */
+        while (1) {
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        return; /* 不会执行到这里 */
     }
 
     /* ============================================================

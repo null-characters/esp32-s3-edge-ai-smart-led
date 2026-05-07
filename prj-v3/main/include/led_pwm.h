@@ -42,7 +42,7 @@
 #define ADC_RESOLUTION              4095     /**< ADC 12-bit分辨率 */
 
 /* 分压电阻比 (R2/(R1+R2)) */
-#define VOLTAGE_DIVIDER_RATIO       0.1282f  /**< 10kΩ/(68kΩ+10kΩ) ≈ 0.1282 */
+#define VOLTAGE_DIVIDER_RATIO       0.0909f  /**< 10kΩ/(100kΩ+10kΩ) ≈ 0.0909 */
 
 /* ================================================================
  * 色温参数配置
