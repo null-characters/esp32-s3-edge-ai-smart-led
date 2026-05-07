@@ -8,6 +8,7 @@
 #include "config_constants.h"
 #include "esp_log.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -22,11 +23,11 @@ static const char *TAG = "BOOST_DBG";
  * 内部函数
  * ======================================================================== */
 
-#if BOOST_DEBUG_STAGE > 0
+#if BOOST_DEBUG_STAGE > 0 && BOOST_DEBUG_STAGE != 3
 static void set_duty(uint8_t percent)
 {
     if (percent > 100) percent = 100;
-    if (percent < BOOST_MIN_DUTY_PERCENT) percent = BOOST_MIN_DUTY_PERCENT;
+    if (percent < BOOST_MIN_DUTY_PERCENT && percent > 0) percent = BOOST_MIN_DUTY_PERCENT;
     if (percent > BOOST_MAX_DUTY_PERCENT) percent = BOOST_MAX_DUTY_PERCENT;
     
     uint32_t raw = (percent * 1023) / 100;
@@ -102,6 +103,86 @@ static void stage3_task(void *arg)
 }
 #endif
 
+#if BOOST_DEBUG_STAGE == 4
+/* 按键开关状态 */
+static bool g_boost_enabled = false;
+static bool g_btn_pressed = false;
+static uint32_t g_btn_press_time = 0;
+
+static void stage4_task(void *arg)
+{
+    ESP_LOGI(TAG, "=== 阶段4: 按键开关模式 ===");
+    ESP_LOGI(TAG, "短按Boot按键(GPIO%d)切换输出状态", BOOST_DEBUG_BTN_GPIO);
+    ESP_LOGI(TAG, "初始状态: 输出关闭");
+    
+    /* 初始化Boot按键GPIO */
+    gpio_config_t btn_cfg = {
+        .pin_bit_mask = 1ULL << BOOST_DEBUG_BTN_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&btn_cfg);
+    
+    /* 初始状态：关闭输出 */
+    set_duty(0);
+    
+    while (1) {
+        /* 检测按键 (按下时GPIO为低电平) */
+        int btn_level = gpio_get_level(BOOST_DEBUG_BTN_GPIO);
+        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        
+        if (btn_level == 0 && !g_btn_pressed) {
+            /* 按键按下 */
+            g_btn_pressed = true;
+            g_btn_press_time = now;
+            ESP_LOGI(TAG, "按键按下...");
+        } else if (btn_level == 1 && g_btn_pressed) {
+            /* 按键释放 */
+            g_btn_pressed = false;
+            uint32_t press_duration = now - g_btn_press_time;
+            
+            /* 短按 (<1秒): 切换开关状态 */
+            if (press_duration < 1000) {
+                g_boost_enabled = !g_boost_enabled;
+                
+                if (g_boost_enabled) {
+                    ESP_LOGI(TAG, ">>> 输出开启 (滞环控制)");
+                    ESP_LOGI(TAG, "目标: %d mV ± %d mV", BOOST_DEBUG_TARGET_MV, BOOST_DEBUG_WINDOW_MV);
+                } else {
+                    ESP_LOGI(TAG, ">>> 输出关闭");
+                    set_duty(0);
+                }
+            }
+        }
+        
+        /* 如果开启，执行滞环控制 */
+        if (g_boost_enabled) {
+            uint16_t v = boost_read_voltage();
+            int16_t err = BOOST_DEBUG_TARGET_MV - v;
+            uint8_t duty;
+            
+            /* 获取当前占空比 */
+            duty = (ledc_get_duty(BOOST_LEDC_MODE, BOOST_LEDC_CHANNEL) * 100) / 1023;
+            
+            if (err > BOOST_DEBUG_WINDOW_MV && duty < BOOST_MAX_DUTY_PERCENT) {
+                duty++;
+                set_duty(duty);
+            } else if (err < -BOOST_DEBUG_WINDOW_MV && duty > BOOST_MIN_DUTY_PERCENT) {
+                duty--;
+                set_duty(duty);
+            }
+            
+            ESP_LOGI(TAG, "V=%d mV, Err=%d mV, Duty=%d%%, 状态=%s", 
+                     v, err, duty, g_boost_enabled ? "ON" : "OFF");
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+#endif
+
 /* ========================================================================
  * 公开接口
  * ======================================================================== */
@@ -127,6 +208,8 @@ esp_err_t boost_debug_test_init(void)
     xTaskCreate(stage2_task, "boost_s2", 3072, NULL, 5, NULL);
 #elif BOOST_DEBUG_STAGE == 3
     xTaskCreate(stage3_task, "boost_s3", 3072, NULL, 5, NULL);
+#elif BOOST_DEBUG_STAGE == 4
+    xTaskCreate(stage4_task, "boost_s4", 3072, NULL, 5, NULL);
 #endif
 
     return ESP_OK;

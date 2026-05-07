@@ -18,8 +18,11 @@
  * 调试宏配置 - 修改此处选择测试阶段
  * ======================================================================== */
 #ifndef BOOST_DEBUG_STAGE
-#define BOOST_DEBUG_STAGE       1   /* 0=禁用, 1=固定PWM, 2=滞环, 3=PID */
+#define BOOST_DEBUG_STAGE       4   /* 0=禁用, 1=固定PWM, 2=滞环, 3=PID, 4=按键开关 */
 #endif
+
+/* Boot按键GPIO (ESP32-S3 DevKitC) */
+#define BOOST_DEBUG_BTN_GPIO    0
 
 /* 阶段1: 固定PWM参数 */
 #define BOOST_DEBUG_FIXED_DUTY  50  /* 占空比 % */

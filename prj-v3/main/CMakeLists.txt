@@ -54,5 +54,5 @@ idf_component_register(
                  "src/voice"
                  "src/led"
                  "test"
-    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_adc esp_driver_i2s esp_driver_uart esp_driver_ledc esp_driver_rmt spiffs espressif__esp-sr
+    REQUIRES unity esp_wifi esp_netif lwip nvs_flash esp_event esp_timer driver esp_adc esp_driver_gpio esp_driver_i2s esp_driver_uart esp_driver_ledc esp_driver_rmt spiffs espressif__esp-sr
 )
