@@ -4,7 +4,7 @@
 
 > **架构巨变公告**：项目已从 Zephyr RTOS 迁移到 ESP-IDF，以集成 ESP-SR 语音识别框架，实现从"感知设备"到"交互设备"的本质跨越。详见 [架构巨变思考](docs/knowledge/from-perception-to-interaction.md)。
 
-> **v4 前沿探索公告**：项目已添加 v4 规划文档（云端智能体升级），但**实际开发仍以 v3（语音交互版本）为主要开发分支**。v4 仅为前沿探索项目，用于验证端云协作、Lua 沙箱、流式 TTS 等前沿技术方案的可行性，暂不进入实际开发阶段。详见 [v4 总体规划](docs/esp32s3_edge_ai_gateway/plan-v4-esp-claw-agent/01-云端智能体升级总体规划.md)。
+> **v5 边缘智能体公告**：项目已规划 v5 版本（边缘智能体升级），将在 v3 完成后启动。v5 将通过局域网接入高性能边缘计算节点（X99 + Tesla P4），利用大语言模型（LLM）实现真正意义上的自然语言交互。v4 云端智能体规划暂停，待 v5 验证后再评估。详见 [v5 总体规划](docs/esp32s3_edge_ai_gateway/plan-v5-edge-agent/01-边缘智能体升级总体规划.md)。
 
 ---
 
@@ -37,6 +37,29 @@
 - I2C / SPI / UART 传感器接口
 - PWM LED 驱动（支持多通道调光）
 - USB OTG（固件升级与调试）
+
+### v5 边缘服务器硬件（已采购）
+
+> **状态**：硬件已采购（二手淘垃圾），等待到货后启动 v5 开发
+
+| 组件 | 规格 | 价格 (¥) |
+|------|------|---------|
+| **机箱** | 3202 半高机箱 | 50 |
+| **显卡** | Tesla P4 8G | 398 |
+| **主板** | X99 原芯组 + 2680v4 CPU | 259 |
+| **内存** | DDR4 16G × 2 (32G) | 495 |
+| **固态** | 三星 981 1T NVMe | 688 |
+| **电源** | 长城 X6 650W | 156 |
+| **散热** | 六铜管散热器 | 57.8 |
+| **显卡风扇** | P4 专用风扇 | 48 |
+| **半高卡** | HDMI 半高亮机卡 | 50 |
+| **总计** | - | **¥2,241.8** |
+
+**边缘服务器定位**：
+- 部署 Ubuntu Server 22.04 LTS + Docker
+- 运行 Ollama + Qwen2.5-7B (GGUF量化)
+- Faster-Whisper STT + Piper TTS 本地部署
+- WebSocket + MQTT 与 ESP32-S3 通信
 
 ---
 
@@ -376,6 +399,7 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 | [MVP 规划](docs/esp32s3_edge_ai_gateway/06-meeting-room-lighting-mvp.md) | 会议室照明 MVP 开发计划 |
 | [语音交互升级总体规划](docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/01-语音交互升级总体规划.md) | v3 语音交互架构设计 ⭐ |
 | [v3 任务追踪表](docs/esp32s3_edge_ai_gateway/plan-v3-voice-interaction/03-任务追踪表.md) | v3 开发任务进度追踪 ⭐ |
+| [v5 边缘智能体总体规划](docs/esp32s3_edge_ai_gateway/plan-v5-edge-agent/01-边缘智能体升级总体规划.md) | v5 边缘服务器 + LLM 架构设计 ⭐ |
 | [多模态升级总体规划](docs/esp32s3_edge_ai_gateway/plan-v2-multimodal/01-多模态升级总体规划.md) | v2 雷达+麦克风多模态架构设计 |
 | [v2 任务追踪表](docs/esp32s3_edge_ai_gateway/plan-v2-multimodal/03-任务追踪表.md) | v2 开发任务进度追踪 |
 
@@ -484,8 +508,9 @@ pytest test_model.py -v -k "TestGoldenCases"       # L4 回归测试
 
 **维护者**: null-characters
 **创建日期**: 2026-04-24
-**最后更新**: 2026-04-28
+**最后更新**: 2026-05-11
 **ESP-IDF 版本**: v5.4
 **架构版本**: prj-v3 (语音交互版本)
+**下一版本**: v5 (边缘智能体，硬件已采购)
 **测试覆盖**: 83 个 Unity 测试组
 **代码质量**: 线程安全、回调死锁预防
