@@ -49,10 +49,10 @@
 
 **执行步骤**：
 ```bash
-# 1. 安装 Tesla P4 到 PCIe x16 插槽
-# 2. 安装 P4 专用风扇（注意风向）
-# 3. 安装 HDMI 半高亮机卡（用于初始化）
-# 4. 连接显卡供电线（6pin 转 8pin）
+# 1. 安装 Tesla P4 到 PCIe x16 插槽（插到底、扣上卡扣即可）
+# 2. 安装 P4 专用涡轮风扇（接主板 4pin PWM 接口）
+# 3. 安装 HDMI 半高亮机卡（用于 BIOS 初始化显示）
+# 4. ⚠️ P4 无外接供电线，TDP 75W 完全由 PCIe 插槽供电
 ```
 
 **验收标准**：
@@ -200,6 +200,34 @@ nvidia-smi
 
 ---
 
+### T1.2.5 运维监控配置
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T1.2.5 |
+| **任务名称** | Docker 自愈 + Prometheus 监控配置 |
+| **预估工时** | 2h |
+| **前置任务** | T1.2.2 |
+
+**执行步骤**：
+```bash
+# 1. 所有 Docker 服务添加 restart: unless-stopped
+# 2. Agent 添加 healthcheck（30s 间隔，3 次重试）
+# 3. 部署 Node Exporter + Prometheus
+docker run -d --name node_exporter --net=host prom/node-exporter
+docker run -d --name prometheus -p 9090:9090 \
+  -v ./prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+
+# 4. 配置 GPU 温度监控 cron
+(crontab -l 2>/dev/null; echo "*/5 * * * * nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader >> /var/log/gpu_temp.log") | crontab -
+```
+
+**验收标准**：
+- [ ] Docker 崩溃后自动重启
+- [ ] Prometheus 抓取指标正常
+- [ ] GPU 温度日志正常
+
+---
+
 ## T1.3 LLM 部署
 
 ### T1.3.1 Ollama 安装
@@ -322,30 +350,32 @@ ollama run qwen2.5:7b "你好，请介绍一下你自己"
 
 ## T1.5 Agent Backend
 
-### T1.5.1 FastAPI 项目搭建
+> **架构说明**：Agent Backend (FastAPI) 直接承载 WebSocket 音频流接口（端口 :8080），不另设独立的 WebSocket 服务进程。FastAPI 原生支持 WebSocket upgrade，减少一次内部 HTTP 中继。
+
+### T1.5.1 Agent Backend 项目搭建（含 WebSocket）
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T1.5.1 |
-| **任务名称** | Agent Backend 项目搭建 |
-| **预估工时** | 2h |
+| **任务名称** | Agent Backend 项目搭建（含 WebSocket 端点） |
+| **预估工时** | 3h |
 | **前置任务** | T1.3.4, T1.4.3 |
 
 **项目结构**：
 ```
 agent_backend/
 ├── app/
-│   ├── main.py
+│   ├── main.py           # FastAPI 入口 + WebSocket route (/ws/audio/{device_id})
 │   ├── config.py
 │   ├── routers/
-│   │   ├── voice.py
-│   │   ├── mqtt.py
-│   │   └── websocket.py
+│   │   ├── voice.py      # REST: /stt, /tts
+│   │   └── mqtt.py       # MQTT 消息处理
 │   ├── services/
-│   │   ├── llm.py
-│   │   ├── stt.py
-│   │   └── tts.py
+│   │   ├── llm.py        # Ollama 调用 + JSON Schema 校验
+│   │   ├── stt.py        # Faster-Whisper 封装
+│   │   ├── tts.py        # Piper TTS 封装
+│   │   └── conversation.py  # 会话管理
 │   └── models/
-│       └── schemas.py
+│       └── schemas.py    # Pydantic 模型
 ├── Dockerfile
 ├── requirements.txt
 └── docker-compose.yml
@@ -353,7 +383,8 @@ agent_backend/
 
 **验收标准**：
 - [ ] 项目结构创建成功
-- [ ] FastAPI 服务启动成功
+- [ ] FastAPI 服务启动成功，端口 :8080
+- [ ] WebSocket `/ws/audio/{device_id}` 端点正常
 - [ ] 健康检查接口正常
 
 ---
@@ -388,17 +419,58 @@ agent_backend/
 
 ---
 
-### T1.5.4 管线测试脚本
+### T1.5.4 会话管理模块
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T1.5.4 |
-| **任务名称** | wav → STT → LLM → TTS 管线测试 |
+| **任务名称** | ConversationManager 多轮会话管理 |
 | **预估工时** | 4h |
-| **前置任务** | T1.5.3 |
+| **前置任务** | T1.5.2 |
+
+**核心逻辑**：
+```python
+class ConversationManager:
+    """管理多轮对话历史，支持上下文关联"""
+    
+    def __init__(self, max_history: int = 10):
+        self.max_history = max_history
+        self.sessions = {}  # device_id → messages
+    
+    def get_or_create_session(self, device_id: str) -> List:
+        if device_id not in self.sessions:
+            self.sessions[device_id] = []
+        return self.sessions[device_id]
+    
+    def add_message(self, device_id: str, role: str, content: str):
+        session = self.get_or_create_session(device_id)
+        session.append({"role": role, "content": content})
+        if len(session) > self.max_history:
+            session.pop(0)  # 保留最近 N 轮
+    
+    def build_messages(self, device_id: str, system_prompt: str) -> List:
+        return [{"role": "system", "content": system_prompt}] + \
+               self.get_or_create_session(device_id)
+```
+
+**验收标准**：
+- [ ] 多轮对话上下文关联正确
+- [ ] 历史长度不超过 N 轮
+- [ ] 会话隔离（不同 device_id 互不影响）
+
+---
+
+### T1.5.5 管线测试脚本
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T1.5.5 |
+| **任务名称** | wav → STT → LLM → TTS 端到端管线测试 |
+| **预估工时** | 4h |
+| **前置任务** | T1.5.3, T1.5.4 |
 
 **验收标准**：
 - [ ] 管线延迟 < 3s
 - [ ] 输出音频正常
+- [ ] 多轮对话上下文传递正确
 
 ---
 
@@ -410,12 +482,13 @@ T1.1.1 ─── T1.1.2 ─── T1.1.4 ─── T1.1.5
 T1.1.3 ──────┘
     
 T1.1.5 ─── T1.2.1 ─── T1.2.2 ─── T1.2.3 ─── T1.2.4
+              └── T1.2.5
                           │
-                          ├── T1.3.1 ─── T1.3.2 ─── T1.3.3 ─── T1.3.4
-                          │
-                          ├── T1.4.1 ─── T1.4.2 ─── T1.4.3
-                          │
-                          └────────────────────────────────── T1.5.1 ─── T1.5.2 ─── T1.5.3 ─── T1.5.4
+         ┌────────────────┼────────────────┐
+         ↓                ↓                ↓
+    T1.3.1 ── T1.3.2 ── T1.3.3 ── T1.3.4     T1.4.1 ── T1.4.2 ── T1.4.3
+         ↓                                    ↓
+         └────────────────── T1.5.1 ── T1.5.2 ──── T1.5.3 ── T1.5.4 ── T1.5.5
 ```
 
 ---
@@ -425,10 +498,10 @@ T1.1.5 ─── T1.2.1 ─── T1.2.2 ─── T1.2.3 ─── T1.2.4
 | 里程碑 | 完成任务 | 预计完成 |
 |--------|---------|---------|
 | M1.1 硬件组装 | T1.1.1 - T1.1.5 | 第1周 |
-| M1.2 系统部署 | T1.2.1 - T1.2.4 | 第1周 |
-| M1.3 LLM 部署 | T1.3.1 - T1.3.4 | 第1周 |
-| M1.4 STT/TTS | T1.4.1 - T1.4.3 | 第1周 |
-| M1.5 Agent Backend | T1.5.1 - T1.5.4 | 第2周 |
+| M1.2 系统部署 + 监控 | T1.2.1 - T1.2.5 | 第1周 |
+| M1.3 LLM 部署 + 测试 | T1.3.1 - T1.3.4 | 第1-2周 |
+| M1.4 STT/TTS | T1.4.1 - T1.4.3 | 第1-2周 |
+| M1.5 Agent Backend（含WS+会话） | T1.5.1 - T1.5.5 | 第2周 |
 
 ---
 

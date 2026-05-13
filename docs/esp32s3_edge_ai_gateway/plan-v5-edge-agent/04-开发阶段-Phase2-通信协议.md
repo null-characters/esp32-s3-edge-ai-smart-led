@@ -138,49 +138,68 @@ void mqtt_client_set_callback(mqtt_event_callback_t callback);
 
 ## T2.2 WebSocket 音频流
 
-### T2.2.1 WebSocket 服务端
+### T2.2.1 WebSocket 端点集成到 Agent Backend
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T2.2.1 |
-| **任务名称** | WebSocket 音频流服务端实现 |
-| **预估工时** | 4h |
+| **任务名称** | WebSocket 端点集成到 Agent Backend |
+| **预估工时** | 3h |
 | **前置任务** | Phase 1 完成 |
 
+> **架构说明**：不另设独立的 WebSocket Server。Agent Backend (FastAPI) 直接承载 `/ws/audio/{device_id}` WebSocket 端点，减少一次内部 HTTP 中继，降低延迟与故障点。
+
 **文件清单**：
-- `agent_backend/app/routers/websocket.py`
+- `agent_backend/app/main.py`（路由配置）
 
 **核心代码**：
 ```python
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
 
 @app.websocket("/ws/audio/{device_id}")
 async def audio_stream(websocket: WebSocket, device_id: str):
     await websocket.accept()
     
-    audio_buffer = []
+    opus_decoder = OpusDecoder(sample_rate=16000, channels=1)
+    pcm_buffer = bytearray()
     
     try:
         while True:
             # 接收音频帧
             data = await websocket.receive_bytes()
             
-            if data[0] == 0x01:  # AUDIO_UPSTREAM
-                # 送入 STT
-                audio_buffer.extend(data[4:])
+            frame_type = data[0]      # Type
+            codec_type = data[1]      # Codec (0x00=PCM, 0x01=Opus)
+            frame_len  = (data[2] << 8) | data[3]
+            flags      = data[4]
+            
+            payload = data[5:5+frame_len]
+            
+            if frame_type == 0x01:  # AUDIO_UPSTREAM
+                # 解码（支持 PCM/Opus）
+                if codec_type == 0x01:  # Opus
+                    pcm = opus_decoder.decode(payload)
+                else:
+                    pcm = payload
                 
-                # VAD 检测到静音，开始识别
-                if len(audio_buffer) > 16000:  # > 1s
-                    text = await stt_service.transcribe(bytes(audio_buffer))
-                    audio_buffer.clear()
+                pcm_buffer.extend(pcm)
+                
+                # VAD 检测静音/EOS，送入 STT
+                if (flags & 0x01) or (flags & 0x02):
+                    text = await stt_service.transcribe(bytes(pcm_buffer))
+                    pcm_buffer.clear()
                     
-                    # 送入 LLM
-                    response = await llm_service.chat(text)
+                    # 送入 LLM（含会话管理）
+                    context = session_mgr.build_context(device_id)
+                    response = await llm_service.chat(text, context)
+                    session_mgr.add_message(device_id, "assistant", response["text"])
                     
                     # 送入 TTS
                     audio = await tts_service.synthesize(response["text"])
                     
-                    # 下发音频 + JSON
-                    await websocket.send_bytes(bytes([0x02]) + audio)  # AUDIO_DOWNSTREAM
+                    # 下发 TTS 音频 + JSON
+                    await websocket.send_bytes(bytes([0x02, 0x00]) + audio)
                     await websocket.send_json(response)
                     
     except WebSocketDisconnect:
@@ -190,6 +209,7 @@ async def audio_stream(websocket: WebSocket, device_id: str):
 **验收标准**：
 - [ ] WebSocket 连接建立成功
 - [ ] 音频流双向传输正常
+- [ ] Opus 解码正确
 - [ ] 连接保活机制
 
 ---
@@ -258,43 +278,42 @@ void ws_client_set_callback(ws_event_callback_t callback);
 
 ---
 
-### T2.2.4 RingBuffer 抗抖动
+### T2.2.4 Opus 编解码层定义
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T2.2.4 |
-| **任务名称** | PSRAM RingBuffer 抗抖动实现 |
-| **预估工时** | 4h |
-| **前置任务** | T2.2.3 |
+| **任务名称** | WebSocket 帧内 Opus 编解码协议定义 |
+| **预估工时** | 2h |
+| **前置任务** | T2.2.2 |
 
-**文件清单**：
-- `main/src/audio/ring_buffer.c`
-- `main/include/ring_buffer.h`
+**协议定义**：
+```
+WebSocket 帧 Header Codec 字段:
+  0x00 = PCM（原始 16kHz 16-bit mono，调试用）
+  0x01 = Opus（默认，生产环境使用）
 
-**数据结构**：
-```c
-#define AUDIO_RING_BUFFER_SIZE  (16000 * 2 * 1)  // 16kHz, 16-bit, mono, 1秒
+编码参数:
+  - 采样率: 16kHz
+  - 声道: mono
+  - 码率: 24kbps
+  - 帧长: 20ms（对应 320 PCM samples → ~60 Opus bytes）
+  - 复杂度: 0（ESP32-S3 低功耗模式）
 
-typedef struct {
-    uint8_t *buffer;           // PSRAM 分配
-    size_t capacity;
-    size_t write_pos;
-    size_t read_pos;
-    size_t available;
-    SemaphoreHandle_t mutex;
-} audio_ring_buffer_t;
+带宽对比:
+  PCM:  256 kbps → 16000×16bit=256000bps
+  Opus:  24 kbps → ~1/10
 
-// 抗抖动阈值
-#define JITTER_THRESHOLD_MS    500  // 缓冲不足500ms时暂停播放
+ESP32-S3 支持情况:
+  - ESP-ADF 包含 Opus 编码器组件
+  - 专用硬件加速编码指令
+  - 额外内存 ~8KB
 ```
 
 **验收标准**：
-- [ ] RingBuffer 分配在 PSRAM
-- [ ] 线程安全
-- [ ] 抗抖动 500ms
+- [ ] Opus 协议文档定义完整
+- [ ] 带宽压降 256kbps → 24kbps
 
 ---
-
-## T2.3 JSON 控制协议
 
 ### T2.3.1 Function Calling JSON Schema 定义
 | 属性 | 内容 |

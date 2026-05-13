@@ -153,7 +153,47 @@ void vad_process(int16_t *samples, size_t count) {
 
 ---
 
-## T3.2 WebSocket 客户端
+### T3.1.5 本地降级模式 (Fallback)
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T3.1.5 |
+| **任务名称** | 边缘服务器断连时本地降级模式 |
+| **预估工时** | 4h |
+| **前置任务** | T3.1.3 |
+
+**文件清单**：
+- `main/src/voice/fallback_handler.c`
+- `main/include/fallback_handler.h`
+
+**设计说明**：
+```
+触发条件：
+  WebSocket 连接失败 / 心跳超时 > 30s
+
+行为：
+  1. 光线效果切换为"黄色慢闪"（表示服务离线）
+  2. 保留 5 条硬编码本地命令：
+     - "关灯"      → LED brightness = 0
+     - "开灯"      → LED brightness = 50%
+     - "调亮一点"  → LED brightness += 20%
+     - "调暗一点"  → LED brightness -= 20%
+     - "亮度最高"  → LED brightness = 100%
+  3. 保持 WakeNet 唤醒监听
+  4. 后台持续尝试重连 WebSocket
+  5. 重连成功后自动退出降级模式，恢复情感光效
+
+退出条件：WebSocket 重连成功
+```
+
+**验收标准**：
+- [ ] WebSocket 断连 30s 后自动激活降级
+- [ ] 5 条硬编码命令可执行
+- [ ] 重连成功后自动退出降级
+- [ ] 降级期间保持唤醒监听
+
+---
+
+## T3.2 WebSocket 客户端 + 音频管线
 
 ### T3.2.1 WebSocket 连接管理
 | 属性 | 内容 |
@@ -206,58 +246,69 @@ esp_err_t ws_client_connect(void) {
 
 ---
 
-### T3.2.2 音频流上行传输
+### T3.2.2 音频流上行传输（含 Opus 编码）
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T3.2.2 |
-| **任务名称** | 音频流上行传输实现 |
-| **预估工时** | 6h |
+| **任务名称** | 音频流上行传输实现（PCM + Opus 双模式） |
+| **预估工时** | 10h |
 | **前置任务** | T3.2.1 |
+| **所属项目** | ESP-ADF Opus 组件 |
+
+> **说明**：ESP32-S3 上行音频有两种模式：PCM 原始（调试用）和 Opus 编码（生产默认）。Opus 将 20ms PCM 帧（640 bytes）压缩至 ~60 bytes，带宽从 256kbps 降至 ~24kbps。
 
 **文件清单**：
 - `main/src/audio/audio_upstream.c`
 - `main/include/audio_upstream.h`
+- `main/src/audio/opus_encoder.c`（新增）
 
 **核心逻辑**：
 ```c
+#include "esp_opus_encoder.h"
+
 #define FRAME_SIZE_SAMPLES  320   // 20ms @ 16kHz
-#define FRAME_HEADER_SIZE   4
-#define FRAME_PAYLOAD_SIZE  (FRAME_SIZE_SAMPLES * 2)  // 16-bit
+#define OPUS_BITRATE        24000 // 24kbps
 
-static uint8_t frame_seq = 0;
+static OpusEncoder *opus_enc = NULL;
 
-void audio_upstream_send_frame(int16_t *samples, size_t count) {
-    uint8_t frame[FRAME_HEADER_SIZE + FRAME_PAYLOAD_SIZE];
-    
-    // Header
-    frame[0] = 0x01;  // AUDIO_UPSTREAM
-    frame[1] = frame_seq++;
-    frame[2] = (count * 2) >> 8;  // Length high
-    frame[3] = (count * 2) & 0xFF;  // Length low
-    
-    // Payload
-    memcpy(&frame[4], samples, count * 2);
-    
-    // 发送
-    esp_websocket_client_send_bin(ws_client, frame, sizeof(frame), portMAX_DELAY);
+void audio_upstream_init(void) {
+    opus_enc = opus_encoder_create(16000, 1, OPUS_APPLICATION_AUDIO);
+    opus_encoder_ctl(opus_enc, OPUS_SET_BITRATE(OPUS_BITRATE));
+    opus_encoder_ctl(opus_enc, OPUS_SET_COMPLEXITY(0));  // 低复杂度
 }
 
-void audio_upstream_task(void *arg) {
-    int16_t samples[FRAME_SIZE_SAMPLES];
+void audio_upstream_send_frame(int16_t *samples, size_t count, bool use_opus) {
+    uint8_t frame[FRAME_HEADER_SIZE + 640];  // 最大帧
     
-    while (ws_state == WS_STATE_STREAMING) {
-        // 从 I2S 读取音频
-        i2s_read(samples, FRAME_SIZE_SAMPLES);
+    if (use_opus) {
+        // Opus 编码：640 PCM bytes → ~60 bytes
+        uint8_t opus_data[128];
+        int opus_len = opus_encode(opus_enc, samples, count,
+                                    opus_data, sizeof(opus_data));
         
-        // 发送到服务器
-        audio_upstream_send_frame(samples, FRAME_SIZE_SAMPLES);
+        frame[0] = 0x01;        // AUDIO_UPSTREAM
+        frame[1] = 0x01;        // Codec: Opus
+        frame[2] = opus_len >> 8;
+        frame[3] = opus_len & 0xFF;
+        memcpy(&frame[4], opus_data, opus_len);
+    } else {
+        // PCM 原始
+        frame[0] = 0x01;        // AUDIO_UPSTREAM
+        frame[1] = 0x00;        // Codec: PCM
+        frame[2] = (count * 2) >> 8;
+        frame[3] = (count * 2) & 0xFF;
+        memcpy(&frame[4], samples, count * 2);
     }
+    
+    esp_websocket_client_send_bin(ws_client, frame, 
+                                  frame[2] + FRAME_HEADER_SIZE, 
+                                  portMAX_DELAY);
 }
 ```
 
 **验收标准**：
-- [ ] 20ms/帧发送正常
-- [ ] 无丢帧
+- [ ] PCM 模式：20ms/帧，无丢帧
+- [ ] Opus 模式：编码正确，带宽 < 30kbps
 - [ ] CPU 占用 < 20%
 
 ---
@@ -281,17 +332,18 @@ void ws_data_handler(uint8_t *data, size_t len) {
     
     switch (frame_type) {
         case 0x02:  // AUDIO_DOWNSTREAM (TTS)
-            // 写入 RingBuffer
-            ring_buffer_write(&tts_buffer, &data[4], len - 4);
-            
-            // 触发播放
-            if (!audio_player_is_playing()) {
-                audio_player_start_from_buffer(&tts_buffer);
+            // 先检查音频优先级管理器是否可以播放
+            if (audio_priority_can_play(PRIORITY_TTS)) {
+                // 写入 RingBuffer
+                ring_buffer_write(&tts_buffer, &data[4], len - 4);
+                
+                if (!audio_player_is_playing()) {
+                    audio_player_start_from_buffer(&tts_buffer);
+                }
             }
             break;
             
         case 0x03:  // CONTROL_CMD (JSON)
-            // 解析并执行
             json_parse_and_execute((char *)&data[4]);
             break;
             
@@ -304,12 +356,49 @@ void ws_data_handler(uint8_t *data, size_t len) {
 
 **验收标准**：
 - [ ] TTS 音频接收正常
-- [ ] 播放流畅无断续
+- [ ] RingBuffer 播放流畅无断续
 - [ ] JSON 解析正确
 
 ---
 
-### T3.2.4 断线重连机制
+### T3.2.4 RingBuffer 抗抖动
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T3.2.4 |
+| **任务名称** | PSRAM RingBuffer 抗抖动实现 |
+| **预估工时** | 4h |
+| **前置任务** | T3.2.2 |
+
+> **说明**：从通信协议模块（Phase 2）移入。RingBuffer 是固件组件，用于 PSRAM 中缓冲音频数据，应对 Wi-Fi 网络抖动。
+
+**文件清单**：
+- `main/src/audio/ring_buffer.c`
+- `main/include/ring_buffer.h`
+
+**数据结构**：
+```c
+#define AUDIO_RING_BUFFER_SIZE  (16000 * 2 * 1)  // 16kHz, 16bit, mono, 1秒
+
+typedef struct {
+    uint8_t *buffer;           // PSRAM 分配
+    size_t capacity;           // 总容量
+    size_t write_pos;          // 写入位置
+    size_t read_pos;           // 读取位置
+    size_t available;          // 可读数据量
+    SemaphoreHandle_t mutex;   // 线程安全
+} audio_ring_buffer_t;
+
+#define JITTER_THRESHOLD_MS    500  // 缓冲不足500ms时暂停播放
+```
+
+**验收标准**：
+- [ ] RingBuffer 分配在 PSRAM
+- [ ] 线程安全
+- [ ] 抗抖动 500ms
+
+---
+
+### T3.2.5 断线重连机制
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T3.2.4 |
@@ -349,6 +438,38 @@ void ws_event_handler(void *arg, esp_event_base_t base, int32_t event_id, void *
 **验收标准**：
 - [ ] 断线自动重连
 - [ ] 重连成功后状态恢复
+
+---
+
+### T3.2.6 音频优先级管理
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T3.2.6 |
+| **任务名称** | 音频通道优先级管理（TTS 抢占） |
+| **预估工时** | 4h |
+| **前置任务** | T3.2.3 |
+
+**文件清单**：
+- `main/src/audio/audio_priority.c`
+- `main/include/audio_priority.h`
+
+**设计**：
+```
+音频优先级（高→低）：
+  1. Mic（用户语音）       → 最高优先级，VAD 激活时抢占所有通道
+  2. 本地提示音（唤醒音）  → 中优先级
+  3. TTS 播放              → 最低优先级，可被 Mic/提示音抢占
+
+抢占逻辑：
+  - WakeNet 检测到唤醒词 → 立即静音 TTS（< 50ms）
+  - VAD 检测到用户说话  → 淡出 TTS（< 100ms）
+  - TTS 结束时           → 恢复待机光效
+```
+
+**验收标准**：
+- [ ] 唤醒词检测时 TTS 静音 < 50ms
+- [ ] 用户说话时 TTS 淡出 < 100ms
+- [ ] 无音频混叠
 
 ---
 
@@ -603,23 +724,24 @@ void execute_command(const agent_command_t *cmd) {
 ## 任务依赖图
 
 ```
-T3.1.1 ─── T3.1.2 ─── T3.1.3 ─── T3.1.4
+T3.1.1 ─── T3.1.2 ─── T3.1.3 ─── T3.1.4 ─── T3.1.5 (Fallback)
                           │
                           ↓
-T3.2.1 ─── T3.2.2 ─── T3.2.3 ─── T3.2.4
+T3.2.1 ─── T3.2.2 ─── T3.2.3 ─── T3.2.4 ─── T3.2.5 ─── T3.2.6
+          (含Opus)      (RingBuffer)          (重连)    (优先级管理)
               │
-              └──────────────────────────┐
-                                         │
-T3.3.1 ─── T3.3.2 ─── T3.3.3 ─── T3.3.4  │
-                          │              │
-                          ↓              │
-T3.4.1 ─── T3.4.2 ─── T3.4.5             │
-      │          │                       │
-      ├── T3.4.3 ┘                       │
-      │                                  │
-      └── T3.4.4 ────────────────────────┘
-                                         │
-T3.5.1 ─── T3.5.2 ─── T3.5.3 ─── T3.5.4 ─┘
+              └────────────────────────────────────────────┐
+                                                           │
+T3.3.1 ─── T3.3.2 ─── T3.3.3 ─── T3.3.4                  │
+                          │                                │
+                          ↓                                │
+T3.4.1 ─── T3.4.2 ─── T3.4.5                               │
+      │          │                                         │
+      ├── T3.4.3 ┘                                         │
+      │                                                    │
+      └── T3.4.4 ───────────────────────────────────────────┘
+                                                           │
+T3.5.1 ─── T3.5.2 ─── T3.5.3 ─── T3.5.4 ──────────────────┘
 ```
 
 ---
@@ -628,11 +750,10 @@ T3.5.1 ─── T3.5.2 ─── T3.5.3 ─── T3.5.4 ─┘
 
 | 里程碑 | 完成任务 | 预计完成 |
 |--------|---------|---------|
-| M3.1 ESP-SR 重构 | T3.1.1 - T3.1.4 | 第1周 |
-| M3.2 WebSocket | T3.2.1 - T3.2.4 | 第1周 |
-| M3.3 JSON 处理 | T3.3.1 - T3.3.4 | 第2周 |
-| M3.4 情感光效 | T3.4.1 - T3.4.5 | 第2周 |
-| M3.5 MQTT 上报 | T3.5.1 - T3.5.4 | 第2周 |
+| M3.1 ESP-SR 重构 + 降级 | T3.1.1 - T3.1.5 | 第1周 |
+| M3.2 WebSocket + Opus + RingBuffer | T3.2.1 - T3.2.6 | 第2周 |
+| M3.3 JSON 处理 + 光效 | T3.3.1 - T3.3.4, T3.4.1 - T3.4.5 | 第3周 |
+| M3.5 MQTT 上报 | T3.5.1 - T3.5.4 | 第3周 |
 
 ---
 
