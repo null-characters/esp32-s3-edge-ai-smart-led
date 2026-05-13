@@ -179,13 +179,16 @@ int uart_write_bytes(const uint8_t *data, size_t len);
 
 ---
 
-### T1.3.3 I2S 驱动
+### T1.3.3 I2S 驱动（含读写接口）
 | 属性 | 内容 |
 |------|------|
 | **任务ID** | T1.3.3 |
-| **任务名称** | I2S 驱动实现 |
-| **预估工时** | 4h |
+| **任务名称** | I2S 驱动实现（双通道读写） |
+| **预估工时** | 6h |
 | **前置任务** | T1.2.2 |
+
+> **修正说明**：原规划缺少 `i2s_write()`。Phase2 DAC (MAX98357A) 需要 I2S 写操作。
+> 修正后包含读写分别对应 I2S0 (麦克风) 和 I2S1 (DAC) 两个通道。
 
 **文件清单**：
 - `main/src/drivers/i2s_driver.c`
@@ -193,15 +196,29 @@ int uart_write_bytes(const uint8_t *data, size_t len);
 
 **接口定义**：
 ```c
-esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample);
-esp_err_t i2s_read(int16_t *data, size_t samples, size_t *bytes_read);
+#define I2S_MIC_PORT    I2S_NUM_0   // INMP441 麦克风
+#define I2S_DAC_PORT    I2S_NUM_1   // MAX98357A DAC 输出
+
+esp_err_t i2s_init(i2s_port_t port, uint32_t sample_rate, uint8_t bits_per_sample);
+esp_err_t i2s_read(int16_t *data, size_t samples, size_t *bytes_read);   // I2S0 Mic
+esp_err_t i2s_write(int16_t *data, size_t samples, size_t *bytes_written); // I2S1 DAC ⭐
 esp_err_t i2s_deinit(void);
+```
+
+**DMA 配置推荐**：
+```c
+i2s_driver_config_t mic_cfg = {
+    .dma_desc_num = 8,          // DMA_BUF_COUNT = 8
+    .dma_frame_num = 512,       // DMA_BUF_LEN = 512
+    // 总缓冲深度: 8 × 512 = 4096 bytes ≈ 128ms @ 16kHz
+};
 ```
 
 **验收标准**：
 - [ ] 采样率 16kHz
 - [ ] 16-bit 单声道
 - [ ] DMA 缓冲正常
+- [ ] `i2s_write()` DAC 输出正常（相位2验证）
 
 ---
 
@@ -308,6 +325,36 @@ typedef enum {
 - [ ] 连接指定 AP 成功
 - [ ] 获取 IP 地址
 - [ ] 断线重连机制
+
+---
+
+### T1.3.6 Flash 分区表配置
+| 属性 | 内容 |
+|------|------|
+| **任务ID** | T1.3.7（在模块规划中编号为 T1.3.7） |
+| **任务名称** | Flash 分区表与 SPIFFS 配置 |
+| **预估工时** | 1h |
+| **前置任务** | T1.2.2 |
+
+**文件清单**：
+- `partitions.csv`
+
+**分区规划**（16MB Flash）：
+```csv
+# Name,   Type,  SubType, Offset,  Size
+nvs,      data,  nvs,     0x9000,  0x5000,
+otadata,  data,  ota,     0xe000,  0x2000,
+phy_init, data,  phy,     0xf000,  0x1000,
+factory,  app,   factory, 0x10000, 2M,
+ota_0,    app,   ota_0,   0x210000, 2M,
+ota_1,    app,   ota_1,   0x410000, 2M,
+spiffs,   data,  spiffs,  0x610000, 6M,    # 模型 + 配置文件
+```
+
+**验收标准**：
+- [ ] `idf.py build` 使用分区表成功
+- [ ] SPIFFS 分区挂载成功
+- [ ] 模型文件可从 SPIFFS 读取
 
 ---
 
